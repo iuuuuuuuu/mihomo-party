@@ -18,6 +18,7 @@ import { exePath, taskDir } from './utils/dirs'
 import path from 'path'
 import { startMonitor } from './resolve/trafficMonitor'
 import { showFloatingWindow } from './resolve/floatingWindow'
+import iconv from 'iconv-lite'
 
 let quitTimeout: NodeJS.Timeout | null = null
 export let mainWindow: BrowserWindow | null = null
@@ -35,12 +36,20 @@ if (process.platform === 'win32' && !is.dev && !process.argv.includes('noadmin')
       if (!existsSync(path.join(taskDir(), 'mihomo-party-run.exe'))) {
         throw new Error('mihomo-party-run.exe not found')
       } else {
-        execSync('C:\\\\Windows\\System32\\schtasks.exe /run /tn mihomo-party-run')
+        execSync('%SystemRoot%\\System32\\schtasks.exe /run /tn mihomo-party-run')
       }
     } catch (e) {
+      let createErrorStr = `${createError}`
+      let eStr = `${e}`
+      try {
+        createErrorStr = iconv.decode((createError as { stderr: Buffer }).stderr, 'gbk')
+        eStr = iconv.decode((e as { stderr: Buffer }).stderr, 'gbk')
+      } catch {
+        // ignore
+      }
       dialog.showErrorBox(
         '首次启动请以管理员权限运行',
-        `首次启动请以管理员权限运行\n${createError}\n${e}`
+        `首次启动请以管理员权限运行\n${createErrorStr}\n${eStr}`
       )
     } finally {
       app.exit()
@@ -92,15 +101,6 @@ app.on('open-url', async (_event, url) => {
   showMainWindow()
   await handleDeepLink(url)
 })
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
-app.on('window-all-closed', (e) => {
-  e.preventDefault()
-  // if (process.platform !== 'darwin') {
-  //   app.quit()
-  // }
-})
 
 app.on('before-quit', async (e) => {
   e.preventDefault()
@@ -109,8 +109,7 @@ app.on('before-quit', async (e) => {
   app.exit()
 })
 
-powerMonitor.on('shutdown', async (e) => {
-  e.preventDefault()
+powerMonitor.on('shutdown', async () => {
   triggerSysProxy(false)
   await stopCore()
   app.exit()
@@ -264,6 +263,14 @@ export async function createWindow(): Promise<void> {
         await quitWithoutCore()
       }, autoQuitWithoutCoreDelay * 1000)
     }
+  })
+
+  mainWindow.on('resized', () => {
+    if (mainWindow) mainWindowState.saveState(mainWindow)
+  })
+
+  mainWindow.on('move', () => {
+    if (mainWindow) mainWindowState.saveState(mainWindow)
   })
 
   mainWindow.on('session-end', async () => {

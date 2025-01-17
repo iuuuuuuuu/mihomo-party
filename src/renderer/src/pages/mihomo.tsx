@@ -8,7 +8,12 @@ import { platform } from '@renderer/utils/init'
 import { FaNetworkWired } from 'react-icons/fa'
 import { IoMdCloudDownload } from 'react-icons/io'
 import PubSub from 'pubsub-js'
-import { mihomoUpgrade, restartCore, triggerSysProxy } from '@renderer/utils/ipc'
+import {
+  mihomoUpgrade,
+  restartCore,
+  startSubStoreBackendServer,
+  triggerSysProxy
+} from '@renderer/utils/ipc'
 import React, { useState } from 'react'
 import InterfaceModal from '@renderer/components/mihomo/interface-modal'
 import { MdDeleteForever } from 'react-icons/md'
@@ -84,6 +89,11 @@ const Mihomo: React.FC = () => {
                     setTimeout(() => {
                       PubSub.publish('mihomo-core-changed')
                     }, 2000)
+                    if (platform !== 'win32') {
+                      new Notification('内核权限丢失', {
+                        body: '内核升级成功，若要使用虚拟网卡（Tun），请到虚拟网卡页面重新手动授权内核'
+                      })
+                    }
                   } catch (e) {
                     if (typeof e === 'string' && e.includes('already using latest version')) {
                       new Notification('已经是最新版本')
@@ -101,6 +111,7 @@ const Mihomo: React.FC = () => {
             divider
           >
             <Select
+              classNames={{ trigger: 'data-[hover=true]:bg-default-200' }}
               className="w-[100px]"
               size="sm"
               selectedKeys={new Set([core])}
@@ -128,6 +139,7 @@ const Mihomo: React.FC = () => {
                   className="mr-2"
                   onPress={async () => {
                     await onChangeNeedRestart({ 'mixed-port': mixedPortInput })
+                    await startSubStoreBackendServer()
                     if (sysProxy?.enable) {
                       triggerSysProxy(true)
                     }
@@ -635,6 +647,7 @@ const Mihomo: React.FC = () => {
           </SettingItem>
           <SettingItem title="日志等级" divider>
             <Select
+              classNames={{ trigger: 'data-[hover=true]:bg-default-200' }}
               className="w-[100px]"
               size="sm"
               selectedKeys={new Set([logLevel])}
@@ -651,6 +664,7 @@ const Mihomo: React.FC = () => {
           </SettingItem>
           <SettingItem title="查找进程">
             <Select
+              classNames={{ trigger: 'data-[hover=true]:bg-default-200' }}
               className="w-[100px]"
               size="sm"
               selectedKeys={new Set([findProcessMode])}

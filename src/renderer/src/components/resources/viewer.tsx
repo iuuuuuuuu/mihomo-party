@@ -1,18 +1,23 @@
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button } from '@nextui-org/react'
 import React, { useEffect, useState } from 'react'
 import { BaseEditor } from '../base/base-editor'
-import { getOverride, restartCore, setOverride } from '@renderer/utils/ipc'
+import { getFileStr, setFileStr } from '@renderer/utils/ipc'
+type Language = 'yaml' | 'javascript' | 'css' | 'json' | 'text'
+
 interface Props {
-  id: string
-  language: 'javascript' | 'yaml'
   onClose: () => void
+  path: string
+  type: string
+  title: string
+  format?: string
 }
-const EditFileModal: React.FC<Props> = (props) => {
-  const { id, language, onClose } = props
+const Viewer: React.FC<Props> = (props) => {
+  const { type, path, title, format, onClose } = props
   const [currData, setCurrData] = useState('')
+  const language: Language = !format || format === 'YamlRule' ? 'yaml' : 'text'
 
   const getContent = async (): Promise<void> => {
-    setCurrData(await getOverride(id, language === 'javascript' ? 'js' : 'yaml'))
+    setCurrData(await getFileStr(path))
   }
 
   useEffect(() => {
@@ -30,39 +35,35 @@ const EditFileModal: React.FC<Props> = (props) => {
       scrollBehavior="inside"
     >
       <ModalContent className="h-full w-[calc(100%-100px)]">
-        <ModalHeader className="flex pb-0 app-drag">
-          编辑覆写{language === 'javascript' ? '脚本' : '配置'}
-        </ModalHeader>
+        <ModalHeader className="flex pb-0 app-drag">{title}</ModalHeader>
         <ModalBody className="h-full">
           <BaseEditor
             language={language}
             value={currData}
+            readOnly={type != 'File'}
             onChange={(value) => setCurrData(value)}
           />
         </ModalBody>
         <ModalFooter className="pt-0">
           <Button size="sm" variant="light" onPress={onClose}>
-            取消
+            关闭
           </Button>
-          <Button
-            size="sm"
-            color="primary"
-            onPress={async () => {
-              try {
-                await setOverride(id, language === 'javascript' ? 'js' : 'yaml', currData)
-                await restartCore()
+          {type == 'File' && (
+            <Button
+              size="sm"
+              color="primary"
+              onPress={async () => {
+                await setFileStr(path, currData)
                 onClose()
-              } catch (e) {
-                alert(e)
-              }
-            }}
-          >
-            确认
-          </Button>
+              }}
+            >
+              保存
+            </Button>
+          )}
         </ModalFooter>
       </ModalContent>
     </Modal>
   )
 }
 
-export default EditFileModal
+export default Viewer

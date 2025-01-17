@@ -25,7 +25,11 @@ import yaml from 'yaml'
 import { mkdir, writeFile, copyFile, rm, readdir } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
-import { startPacServer, startSubStoreServer } from '../resolve/server'
+import {
+  startPacServer,
+  startSubStoreBackendServer,
+  startSubStoreFrontendServer
+} from '../resolve/server'
 import { triggerSysProxy } from '../sys/sysproxy'
 import {
   getAppConfig,
@@ -95,6 +99,7 @@ async function initFiles(): Promise<void> {
   }
   await Promise.all([
     copy('country.mmdb'),
+    copy('geoip.metadb'),
     copy('geoip.dat'),
     copy('geosite.dat'),
     copy('ASN.mmdb')
@@ -105,7 +110,7 @@ async function cleanup(): Promise<void> {
   // update cache
   const files = await readdir(dataDir())
   for (const file of files) {
-    if (file.endsWith('.exe') || file.endsWith('.dmg') || file.endsWith('.7z')) {
+    if (file.endsWith('.exe') || file.endsWith('.pkg') || file.endsWith('.7z')) {
       try {
         await rm(path.join(dataDir(), file))
       } catch {
@@ -150,7 +155,8 @@ async function migration(): Promise<void> {
     envType = [process.platform === 'win32' ? 'powershell' : 'bash'],
     useSubStore = true,
     showFloatingWindow = false,
-    disableTray = false
+    disableTray = false,
+    encryptedPassword
   } = await getAppConfig()
   const {
     'external-controller-pipe': externalControllerPipe,
@@ -210,6 +216,10 @@ async function migration(): Promise<void> {
   if (!showFloatingWindow && disableTray) {
     await patchAppConfig({ disableTray: false })
   }
+  // remove password
+  if (encryptedPassword) {
+    await patchAppConfig({ encryptedPassword: undefined })
+  }
 }
 
 function initDeeplink(): void {
@@ -230,10 +240,13 @@ export async function init(): Promise<void> {
   await migration()
   await initFiles()
   await cleanup()
-  await startPacServer()
-  await startSubStoreServer()
+  await startSubStoreFrontendServer()
+  await startSubStoreBackendServer()
   const { sysProxy } = await getAppConfig()
   try {
+    if (sysProxy.enable) {
+      await startPacServer()
+    }
     await triggerSysProxy(sysProxy.enable)
   } catch {
     // ignore

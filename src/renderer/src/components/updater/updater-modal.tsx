@@ -37,12 +37,12 @@ const UpdaterModal: React.FC<Props> = (props) => {
       scrollBehavior="inside"
     >
       <ModalContent className="h-full w-[calc(100%-100px)]">
-        <ModalHeader className="flex justify-between">
+        <ModalHeader className="flex justify-between app-drag">
           <div>v{version} 版本就绪</div>
           <Button
             color="primary"
             size="sm"
-            className="flex"
+            className="flex app-nodrag"
             onPress={() => {
               open(`https://github.com/mihomo-party-org/mihomo-party/releases/tag/v${version}`)
             }}
@@ -64,10 +64,11 @@ const UpdaterModal: React.FC<Props> = (props) => {
           </ReactMarkdown>
         </ModalBody>
         <ModalFooter>
-          <Button variant="light" onPress={onClose}>
+          <Button size="sm" variant="light" onPress={onClose}>
             取消
           </Button>
           <Button
+            size="sm"
             color="primary"
             isLoading={downloading}
             onPress={async () => {

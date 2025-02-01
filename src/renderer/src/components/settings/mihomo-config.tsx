@@ -1,16 +1,19 @@
 import React, { useState } from 'react'
 import SettingCard from '../base/base-setting-card'
 import SettingItem from '../base/base-setting-item'
-import { Button, Input, Select, SelectItem, Switch } from '@nextui-org/react'
+import { Button, Input, Select, SelectItem, Switch, Tooltip } from '@nextui-org/react'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import debounce from '@renderer/utils/debounce'
 import { getGistUrl, patchControledMihomoConfig, restartCore } from '@renderer/utils/ipc'
 import { MdDeleteForever } from 'react-icons/md'
 import { BiCopy } from 'react-icons/bi'
+import { IoIosHelpCircle } from 'react-icons/io'
+import { platform } from '@renderer/utils/init'
 
 const MihomoConfig: React.FC = () => {
   const { appConfig, patchAppConfig } = useAppConfig()
   const {
+    diffWorkDir = false,
     controlDns = true,
     controlSniff = true,
     delayTestConcurrency,
@@ -20,6 +23,7 @@ const MihomoConfig: React.FC = () => {
     pauseSSID = [],
     delayTestUrl,
     userAgent,
+    mihomoCpuPriority = 'PRIORITY_NORMAL',
     proxyCols = 'auto'
   } = appConfig || {}
   const [url, setUrl] = useState(delayTestUrl)
@@ -118,6 +122,7 @@ const MihomoConfig: React.FC = () => {
       </SettingItem>
       <SettingItem title="代理节点展示列数" divider>
         <Select
+          classNames={{ trigger: 'data-[hover=true]:bg-default-200' }}
           className="w-[150px]"
           size="sm"
           selectedKeys={new Set([proxyCols])}
@@ -131,6 +136,57 @@ const MihomoConfig: React.FC = () => {
           <SelectItem key="3">三列</SelectItem>
           <SelectItem key="4">四列</SelectItem>
         </Select>
+      </SettingItem>
+      {platform === 'win32' && (
+        <SettingItem title="内核进程优先级" divider>
+          <Select
+            classNames={{ trigger: 'data-[hover=true]:bg-default-200' }}
+            className="w-[150px]"
+            size="sm"
+            selectedKeys={new Set([mihomoCpuPriority])}
+            onSelectionChange={async (v) => {
+              try {
+                await patchAppConfig({
+                  mihomoCpuPriority: v.currentKey as Priority
+                })
+                await restartCore()
+              } catch (e) {
+                alert(e)
+              }
+            }}
+          >
+            <SelectItem key="PRIORITY_HIGHEST">实时</SelectItem>
+            <SelectItem key="PRIORITY_HIGH">高</SelectItem>
+            <SelectItem key="PRIORITY_ABOVE_NORMAL">高于正常</SelectItem>
+            <SelectItem key="PRIORITY_NORMAL">正常</SelectItem>
+            <SelectItem key="PRIORITY_BELOW_NORMAL">低于正常</SelectItem>
+            <SelectItem key="PRIORITY_LOW">低</SelectItem>
+          </Select>
+        </SettingItem>
+      )}
+      <SettingItem
+        title="为不同订阅分别指定工作目录"
+        actions={
+          <Tooltip content="开启后可以避免不同订阅中存在相同代理组名时无法分别保存选择的节点">
+            <Button isIconOnly size="sm" variant="light">
+              <IoIosHelpCircle className="text-lg" />
+            </Button>
+          </Tooltip>
+        }
+        divider
+      >
+        <Switch
+          size="sm"
+          isSelected={diffWorkDir}
+          onValueChange={async (v) => {
+            try {
+              await patchAppConfig({ diffWorkDir: v })
+              await restartCore()
+            } catch (e) {
+              alert(e)
+            }
+          }}
+        />
       </SettingItem>
       <SettingItem title="接管 DNS 设置" divider>
         <Switch

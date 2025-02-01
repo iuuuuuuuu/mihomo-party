@@ -36,7 +36,7 @@ const EditInfoModal: React.FC<Props> = (props) => {
       scrollBehavior="inside"
     >
       <ModalContent>
-        <ModalHeader className="flex">编辑信息</ModalHeader>
+        <ModalHeader className="flex app-drag">编辑信息</ModalHeader>
         <ModalBody>
           <SettingItem title="名称">
             <Input
@@ -71,10 +71,10 @@ const EditInfoModal: React.FC<Props> = (props) => {
           </SettingItem>
         </ModalBody>
         <ModalFooter>
-          <Button variant="light" onPress={onClose}>
+          <Button size="sm" variant="light" onPress={onClose}>
             取消
           </Button>
-          <Button color="primary" onPress={onSave}>
+          <Button size="sm" color="primary" onPress={onSave}>
             保存
           </Button>
         </ModalFooter>

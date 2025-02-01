@@ -1,5 +1,5 @@
 import { useTheme } from 'next-themes'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavigateFunction, useLocation, useNavigate, useRoutes } from 'react-router-dom'
 import OutboundModeSwitcher from '@renderer/components/sider/outbound-mode-switcher'
 import SysproxySwitcher from '@renderer/components/sider/sysproxy-switcher'
@@ -44,6 +44,7 @@ const App: React.FC = () => {
     appTheme = 'system',
     customTheme,
     useWindowFrame = false,
+    siderWidth = 250,
     siderOrder = [
       'sysproxy',
       'tun',
@@ -60,7 +61,12 @@ const App: React.FC = () => {
       'substore'
     ]
   } = appConfig || {}
+  const narrowWidth = platform === 'darwin' ? 70 : 60
   const [order, setOrder] = useState(siderOrder)
+  const [siderWidthValue, setSiderWidthValue] = useState(siderWidth)
+  const siderWidthValueRef = useRef(siderWidthValue)
+  const [resizing, setResizing] = useState(false)
+  const resizingRef = useRef(resizing)
   const sensors = useSensors(useSensor(PointerSensor))
   const { setTheme, systemTheme } = useTheme()
   navigate = useNavigate()
@@ -80,9 +86,16 @@ const App: React.FC = () => {
       }
     }
   }
+
   useEffect(() => {
     setOrder(siderOrder)
-  }, [siderOrder])
+    setSiderWidthValue(siderWidth)
+  }, [siderOrder, siderWidth])
+
+  useEffect(() => {
+    siderWidthValueRef.current = siderWidthValue
+    resizingRef.current = resizing
+  }, [siderWidthValue, resizing])
 
   useEffect(() => {
     const tourShown = window.localStorage.getItem('tourShown')
@@ -103,6 +116,18 @@ const App: React.FC = () => {
       setTitlebar()
     })
   }, [customTheme])
+
+  useEffect(() => {
+    window.addEventListener('mouseup', onResizeEnd)
+    return (): void => window.removeEventListener('mouseup', onResizeEnd)
+  }, [])
+
+  const onResizeEnd = (): void => {
+    if (resizingRef.current) {
+      setResizing(false)
+      patchAppConfig({ siderWidth: siderWidthValueRef.current })
+    }
+  }
 
   const onDragEnd = async (event: DragEndEvent): Promise<void> => {
     const { active, over } = event
@@ -138,33 +163,55 @@ const App: React.FC = () => {
   }
 
   const componentMap = {
-    sysproxy: <SysproxySwitcher key="sysproxy" />,
-    tun: <TunSwitcher key="tun" />,
-    profile: <ProfileCard key="profile" />,
-    proxy: <ProxyCard key="proxy" />,
-    mihomo: <MihomoCoreCard key="mihomo" />,
-    connection: <ConnCard key="connection" />,
-    dns: <DNSCard key="dns" />,
-    sniff: <SniffCard key="sniff" />,
-    log: <LogCard key="log" />,
-    rule: <RuleCard key="rule" />,
-    resource: <ResourceCard key="resource" />,
-    override: <OverrideCard key="override" />,
-    substore: <SubStoreCard key="substore" />
+    sysproxy: SysproxySwitcher,
+    tun: TunSwitcher,
+    profile: ProfileCard,
+    proxy: ProxyCard,
+    mihomo: MihomoCoreCard,
+    connection: ConnCard,
+    dns: DNSCard,
+    sniff: SniffCard,
+    log: LogCard,
+    rule: RuleCard,
+    resource: ResourceCard,
+    override: OverrideCard,
+    substore: SubStoreCard
   }
 
   return (
-    <div className="w-full h-[100vh] flex">
-      <div className="side w-[250px] h-full overflow-y-auto no-scrollbar">
-        <div className="app-drag sticky top-0 z-40 backdrop-blur bg-transparent h-[49px]">
-          <div
-            className={`flex justify-between p-2 ${!useWindowFrame && platform === 'darwin' ? 'ml-[60px]' : ''}`}
-          >
-            <div className="flex ml-1">
+    <div
+      onMouseMove={(e) => {
+        if (!resizing) return
+        if (e.clientX <= 150) {
+          setSiderWidthValue(narrowWidth)
+        } else if (e.clientX <= 250) {
+          setSiderWidthValue(250)
+        } else if (e.clientX >= 400) {
+          setSiderWidthValue(400)
+        } else {
+          setSiderWidthValue(e.clientX)
+        }
+      }}
+      className={`w-full h-[100vh] flex ${resizing ? 'cursor-ew-resize' : ''}`}
+    >
+      {siderWidthValue === narrowWidth ? (
+        <div style={{ width: `${narrowWidth}px` }} className="side h-full">
+          <div className="app-drag flex justify-center items-center z-40 bg-transparent h-[49px]">
+            {platform !== 'darwin' && (
               <MihomoIcon className="h-[32px] leading-[32px] text-lg mx-[1px]" />
-              <h3 className="text-lg font-bold leading-[32px]">ihomo Party</h3>
+            )}
+            <UpdaterButton iconOnly={true} />
+          </div>
+          <div className="h-[calc(100%-110px)] overflow-y-auto no-scrollbar">
+            <div className="h-full w-full flex flex-col gap-2">
+              {order.map((key: string) => {
+                const Component = componentMap[key]
+                if (!Component) return null
+                return <Component key={key} iconOnly={true} />
+              })}
             </div>
-            <UpdaterButton />
+          </div>
+          <div className="mt-2 flex justify-center items-center h-[48px]">
             <Button
               size="sm"
               className="app-nodrag"
@@ -174,25 +221,77 @@ const App: React.FC = () => {
               onPress={() => {
                 navigate('/settings')
               }}
-              startContent={<IoSettings className="text-[20px]" />}
-            />
+            >
+              <IoSettings className="text-[20px]" />
+            </Button>
           </div>
         </div>
-        <div className="mt-2 mx-2">
-          <OutboundModeSwitcher />
-        </div>
-        <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={onDragEnd}>
-          <div className="grid grid-cols-2 gap-2 m-2">
-            <SortableContext items={order}>
-              {order.map((key: string) => {
-                return componentMap[key]
-              })}
-            </SortableContext>
+      ) : (
+        <div
+          style={{ width: `${siderWidthValue}px` }}
+          className="side h-full overflow-y-auto no-scrollbar"
+        >
+          <div className="app-drag sticky top-0 z-40 backdrop-blur bg-transparent h-[49px]">
+            <div
+              className={`flex justify-between p-2 ${!useWindowFrame && platform === 'darwin' ? 'ml-[60px]' : ''}`}
+            >
+              <div className="flex ml-1">
+                <MihomoIcon className="h-[32px] leading-[32px] text-lg mx-[1px]" />
+                <h3 className="text-lg font-bold leading-[32px]">ihomo Party</h3>
+              </div>
+              <UpdaterButton />
+              <Button
+                size="sm"
+                className="app-nodrag"
+                isIconOnly
+                color={location.pathname.includes('/settings') ? 'primary' : 'default'}
+                variant={location.pathname.includes('/settings') ? 'solid' : 'light'}
+                onPress={() => {
+                  navigate('/settings')
+                }}
+              >
+                <IoSettings className="text-[20px]" />
+              </Button>
+            </div>
           </div>
-        </DndContext>
-      </div>
+          <div className="mt-2 mx-2">
+            <OutboundModeSwitcher />
+          </div>
+          <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={onDragEnd}>
+            <div className="grid grid-cols-2 gap-2 m-2">
+              <SortableContext items={order}>
+                {order.map((key: string) => {
+                  const Component = componentMap[key]
+                  if (!Component) return null
+                  return <Component key={key} />
+                })}
+              </SortableContext>
+            </div>
+          </DndContext>
+        </div>
+      )}
+
+      <div
+        onMouseDown={() => {
+          setResizing(true)
+        }}
+        style={{
+          position: 'fixed',
+          zIndex: 50,
+          left: `${siderWidthValue - 2}px`,
+          width: '5px',
+          height: '100vh',
+          cursor: 'ew-resize'
+        }}
+        className={resizing ? 'bg-primary' : ''}
+      />
       <Divider orientation="vertical" />
-      <div className="main w-[calc(100%-251px)] h-full overflow-y-auto">{page}</div>
+      <div
+        style={{ width: `calc(100% - ${siderWidthValue + 1}px)` }}
+        className="main grow h-full overflow-y-auto"
+      >
+        {page}
+      </div>
     </div>
   )
 }

@@ -18,6 +18,9 @@ import { exePath, taskDir } from './utils/dirs'
 import path from 'path'
 import { startMonitor } from './resolve/trafficMonitor'
 import { showFloatingWindow } from './resolve/floatingWindow'
+import iconv from 'iconv-lite'
+import { initI18n } from '../shared/i18n'
+import i18next from 'i18next'
 
 let quitTimeout: NodeJS.Timeout | null = null
 export let mainWindow: BrowserWindow | null = null
@@ -35,12 +38,20 @@ if (process.platform === 'win32' && !is.dev && !process.argv.includes('noadmin')
       if (!existsSync(path.join(taskDir(), 'mihomo-party-run.exe'))) {
         throw new Error('mihomo-party-run.exe not found')
       } else {
-        execSync('C:\\\\Windows\\System32\\schtasks.exe /run /tn mihomo-party-run')
+        execSync('%SystemRoot%\\System32\\schtasks.exe /run /tn mihomo-party-run')
       }
     } catch (e) {
+      let createErrorStr = `${createError}`
+      let eStr = `${e}`
+      try {
+        createErrorStr = iconv.decode((createError as { stderr: Buffer }).stderr, 'gbk')
+        eStr = iconv.decode((e as { stderr: Buffer }).stderr, 'gbk')
+      } catch {
+        // ignore
+      }
       dialog.showErrorBox(
-        '首次启动请以管理员权限运行',
-        `首次启动请以管理员权限运行\n${createError}\n${e}`
+        i18next.t('common.error.adminRequired'),
+        `${i18next.t('common.error.adminRequired')}\n${createErrorStr}\n${eStr}`
       )
     } finally {
       app.exit()
@@ -92,15 +103,6 @@ app.on('open-url', async (_event, url) => {
   showMainWindow()
   await handleDeepLink(url)
 })
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
-app.on('window-all-closed', (e) => {
-  e.preventDefault()
-  // if (process.platform !== 'darwin') {
-  //   app.quit()
-  // }
-})
 
 app.on('before-quit', async (e) => {
   e.preventDefault()
@@ -109,8 +111,7 @@ app.on('before-quit', async (e) => {
   app.exit()
 })
 
-powerMonitor.on('shutdown', async (e) => {
-  e.preventDefault()
+powerMonitor.on('shutdown', async () => {
   triggerSysProxy(false)
   await stopCore()
   app.exit()
@@ -122,10 +123,13 @@ powerMonitor.on('shutdown', async (e) => {
 app.whenReady().then(async () => {
   // Set app user model id for windows
   electronApp.setAppUserModelId('party.mihomo.app')
+
   try {
+    const appConfig = await getAppConfig()
+    await initI18n({ lng: appConfig.language })
     await initPromise
   } catch (e) {
-    dialog.showErrorBox('应用初始化失败', `${e}`)
+    dialog.showErrorBox(i18next.t('common.error.initFailed'), `${e}`)
     app.quit()
   }
   try {
@@ -134,7 +138,7 @@ app.whenReady().then(async () => {
       await initProfileUpdater()
     })
   } catch (e) {
-    dialog.showErrorBox('内核启动出错', `${e}`)
+    dialog.showErrorBox(i18next.t('mihomo.error.coreStartFailed'), `${e}`)
   }
   try {
     await startMonitor()
@@ -175,7 +179,7 @@ async function handleDeepLink(url: string): Promise<void> {
         const profileUrl = urlObj.searchParams.get('url')
         const profileName = urlObj.searchParams.get('name')
         if (!profileUrl) {
-          throw new Error('缺少参数 url')
+          throw new Error(i18next.t('profiles.error.urlParamMissing'))
         }
         await addProfileItem({
           type: 'remote',
@@ -183,10 +187,10 @@ async function handleDeepLink(url: string): Promise<void> {
           url: profileUrl
         })
         mainWindow?.webContents.send('profileConfigUpdated')
-        new Notification({ title: '订阅导入成功' }).show()
+        new Notification({ title: i18next.t('profiles.notification.importSuccess') }).show()
         break
       } catch (e) {
-        dialog.showErrorBox('订阅导入失败', `${url}\n${e}`)
+        dialog.showErrorBox(i18next.t('profiles.error.importFailed'), `${url}\n${e}`)
       }
     }
   }
@@ -222,7 +226,8 @@ export async function createWindow(): Promise<void> {
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       spellcheck: false,
-      sandbox: false
+      sandbox: false,
+      devTools: true
     }
   })
   mainWindowState.manage(mainWindow)
@@ -266,6 +271,14 @@ export async function createWindow(): Promise<void> {
     }
   })
 
+  mainWindow.on('resized', () => {
+    if (mainWindow) mainWindowState.saveState(mainWindow)
+  })
+
+  mainWindow.on('move', () => {
+    if (mainWindow) mainWindowState.saveState(mainWindow)
+  })
+
   mainWindow.on('session-end', async () => {
     triggerSysProxy(false)
     await stopCore()
@@ -275,6 +288,12 @@ export async function createWindow(): Promise<void> {
     shell.openExternal(details.url)
     return { action: 'deny' }
   })
+
+  // 在开发模式下自动打开 DevTools
+  if (is.dev) {
+    mainWindow.webContents.openDevTools()
+  }
+
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {

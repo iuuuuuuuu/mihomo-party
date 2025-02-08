@@ -4,6 +4,7 @@ import {
   logPath,
   mihomoCoreDir,
   mihomoCorePath,
+  mihomoProfileWorkDir,
   mihomoTestDir,
   mihomoWorkConfigPath,
   mihomoWorkDir
@@ -12,10 +13,11 @@ import { generateProfile } from './factory'
 import {
   getAppConfig,
   getControledMihomoConfig,
+  getProfileConfig,
   patchAppConfig,
   patchControledMihomoConfig
 } from '../config'
-import { app, dialog, ipcMain, net, safeStorage } from 'electron'
+import { app, dialog, ipcMain, net } from 'electron'
 import {
   startMihomoTraffic,
   startMihomoConnections,
@@ -32,16 +34,18 @@ import { readFile, rm, writeFile } from 'fs/promises'
 import { promisify } from 'util'
 import { mainWindow } from '..'
 import path from 'path'
-import { existsSync } from 'fs'
+import os from 'os'
+import { createWriteStream, existsSync } from 'fs'
 import { uploadRuntimeConfig } from '../resolve/gistApi'
 import { startMonitor } from '../resolve/trafficMonitor'
+import i18next from '../../shared/i18n'
 
 chokidar.watch(path.join(mihomoCoreDir(), 'meta-update'), {}).on('unlinkDir', async () => {
   try {
     await stopCore(true)
     await startCore()
   } catch (e) {
-    dialog.showErrorBox('内核启动出错', `${e}`)
+    dialog.showErrorBox(i18next.t('mihomo.error.coreStartFailed'), `${e}`)
   }
 })
 
@@ -55,30 +59,30 @@ let child: ChildProcess
 let retry = 10
 
 export async function startCore(detached = false): Promise<Promise<void>[]> {
-  const { core = 'mihomo', autoSetDNS = true, encryptedPassword } = await getAppConfig()
+  const {
+    core = 'mihomo',
+    autoSetDNS = true,
+    diffWorkDir = false,
+    mihomoCpuPriority = 'PRIORITY_NORMAL',
+    disableLoopbackDetector = false,
+    disableEmbedCA = false,
+    disableSystemCA = false,
+    skipSafePathCheck = false
+  } = await getAppConfig()
   const { 'log-level': logLevel } = await getControledMihomoConfig()
   if (existsSync(path.join(dataDir(), 'core.pid'))) {
     const pid = parseInt(await readFile(path.join(dataDir(), 'core.pid'), 'utf-8'))
     try {
       process.kill(pid, 'SIGINT')
     } catch {
-      if (process.platform !== 'win32' && encryptedPassword && isEncryptionAvailable()) {
-        const execPromise = promisify(exec)
-        const password = safeStorage.decryptString(Buffer.from(encryptedPassword))
-        try {
-          await execPromise(`echo "${password}" | sudo -S kill ${pid}`)
-        } catch {
-          // ignore
-        }
-      }
+      // ignore
     } finally {
       await rm(path.join(dataDir(), 'core.pid'))
     }
   }
-
+  const { current } = await getProfileConfig()
   const { tun } = await getControledMihomoConfig()
   const corePath = mihomoCorePath(core)
-  await autoGrantCorePermition(corePath)
   await generateProfile()
   await checkProfile()
   await stopCore()
@@ -91,11 +95,26 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
       })
     }
   }
-
-  child = spawn(corePath, ['-d', mihomoWorkDir(), ctlParam, mihomoIpcPath], {
-    detached: detached,
-    stdio: detached ? 'ignore' : undefined
-  })
+  const stdout = createWriteStream(logPath(), { flags: 'a' })
+  const stderr = createWriteStream(logPath(), { flags: 'a' })
+  const env = {
+    DISABLE_LOOPBACK_DETECTOR: String(disableLoopbackDetector),
+    DISABLE_EMBED_CA: String(disableEmbedCA),
+    DISABLE_SYSTEM_CA: String(disableSystemCA),
+    SKIP_SAFE_PATH_CHECK: String(skipSafePathCheck)
+  }
+  child = spawn(
+    corePath,
+    ['-d', diffWorkDir ? mihomoProfileWorkDir(current) : mihomoWorkDir(), ctlParam, mihomoIpcPath],
+    {
+      detached: detached,
+      stdio: detached ? 'ignore' : undefined,
+      env: env
+    }
+  )
+  if (process.platform === 'win32' && child.pid) {
+    os.setPriority(child.pid, os.constants.priority[mihomoCpuPriority])
+  }
   if (detached) {
     child.unref()
     return new Promise((resolve) => {
@@ -114,9 +133,8 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
       await stopCore()
     }
   })
-  child.stdout?.on('data', async (data) => {
-    await writeFile(logPath(), data, { flag: 'a' })
-  })
+  child.stdout?.pipe(stdout)
+  child.stderr?.pipe(stderr)
   return new Promise((resolve, reject) => {
     child.stdout?.on('data', async (data) => {
       const str = data.toString()
@@ -124,7 +142,7 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
         patchControledMihomoConfig({ tun: { enable: false } })
         mainWindow?.webContents.send('controledMihomoConfigUpdated')
         ipcMain.emit('updateTrayMenu')
-        reject('虚拟网卡启动失败, 请尝试手动授予内核权限')
+        reject(i18next.t('tun.error.tunPermissionDenied'))
       }
 
       if (
@@ -136,7 +154,8 @@ export async function startCore(detached = false): Promise<Promise<void>[]> {
             child.stdout?.on('data', async (data) => {
               if (data.toString().includes('Start initial Compatible provider default')) {
                 try {
-                  mainWindow?.webContents.send('coreRestart')
+                  mainWindow?.webContents.send('groupsUpdated')
+                  mainWindow?.webContents.send('rulesUpdated')
                   await uploadRuntimeConfig()
                 } catch {
                   // ignore
@@ -182,7 +201,7 @@ export async function restartCore(): Promise<void> {
   try {
     await startCore()
   } catch (e) {
-    dialog.showErrorBox('内核启动出错', `${e}`)
+    dialog.showErrorBox(i18next.t('mihomo.error.coreStartFailed'), `${e}`)
   }
 }
 
@@ -193,7 +212,7 @@ export async function keepCoreAlive(): Promise<void> {
       await writeFile(path.join(dataDir(), 'core.pid'), child.pid.toString())
     }
   } catch (e) {
-    dialog.showErrorBox('内核启动出错', `${e}`)
+    dialog.showErrorBox(i18next.t('mihomo.error.coreStartFailed'), `${e}`)
   }
 }
 
@@ -204,11 +223,25 @@ export async function quitWithoutCore(): Promise<void> {
 }
 
 async function checkProfile(): Promise<void> {
-  const { core = 'mihomo' } = await getAppConfig()
+  const {
+    core = 'mihomo',
+    diffWorkDir = false,
+    skipSafePathCheck = false
+  } = await getAppConfig()
+  const { current } = await getProfileConfig()
   const corePath = mihomoCorePath(core)
   const execFilePromise = promisify(execFile)
+  const env = {
+    SKIP_SAFE_PATH_CHECK: String(skipSafePathCheck)
+  }
   try {
-    await execFilePromise(corePath, ['-t', '-f', mihomoWorkConfigPath(), '-d', mihomoTestDir()])
+    await execFilePromise(corePath, [
+      '-t',
+      '-f',
+      diffWorkDir ? mihomoWorkConfigPath(current) : mihomoWorkConfigPath('work'),
+      '-d',
+      mihomoTestDir()
+    ], { env })
   } catch (error) {
     if (error instanceof Error && 'stdout' in error) {
       const { stdout } = error as { stdout: string }
@@ -216,30 +249,8 @@ async function checkProfile(): Promise<void> {
         .split('\n')
         .filter((line) => line.includes('level=error'))
         .map((line) => line.split('level=error')[1])
-      throw new Error(`Profile Check Failed:\n${errorLines.join('\n')}`)
+      throw new Error(`${i18next.t('mihomo.error.profileCheckFailed')}:\n${errorLines.join('\n')}`)
     } else {
-      throw error
-    }
-  }
-}
-
-export async function autoGrantCorePermition(corePath: string): Promise<void> {
-  if (process.platform === 'win32') return
-  const { encryptedPassword } = await getAppConfig()
-  const execPromise = promisify(exec)
-  if (encryptedPassword && isEncryptionAvailable()) {
-    try {
-      const password = safeStorage.decryptString(Buffer.from(encryptedPassword))
-      if (process.platform === 'linux') {
-        await execPromise(`echo "${password}" | sudo -S chown root:root "${corePath}"`)
-        await execPromise(`echo "${password}" | sudo -S chmod +sx "${corePath}"`)
-      }
-      if (process.platform === 'darwin') {
-        await execPromise(`echo "${password}" | sudo -S chown root:admin "${corePath}"`)
-        await execPromise(`echo "${password}" | sudo -S chmod +sx "${corePath}"`)
-      }
-    } catch (error) {
-      patchAppConfig({ encryptedPassword: undefined })
       throw error
     }
   }
@@ -260,27 +271,19 @@ export async function manualGrantCorePermition(password?: string): Promise<void>
   }
 }
 
-export function isEncryptionAvailable(): boolean {
-  return safeStorage.isEncryptionAvailable()
-}
-
-export async function getDefaultDevice(password?: string): Promise<string> {
+export async function getDefaultDevice(): Promise<string> {
   const execPromise = promisify(exec)
-  let sudo = ''
-  if (password) sudo = `echo "${password}" | sudo -S `
-  const { stdout: deviceOut } = await execPromise(`${sudo}route -n get default`)
+  const { stdout: deviceOut } = await execPromise(`route -n get default`)
   let device = deviceOut.split('\n').find((s) => s.includes('interface:'))
   device = device?.trim().split(' ').slice(1).join(' ')
   if (!device) throw new Error('Get device failed')
   return device
 }
 
-async function getDefaultService(password?: string): Promise<string> {
+async function getDefaultService(): Promise<string> {
   const execPromise = promisify(exec)
-  let sudo = ''
-  if (password) sudo = `echo "${password}" | sudo -S `
-  const device = await getDefaultDevice(password)
-  const { stdout: order } = await execPromise(`${sudo}networksetup -listnetworkserviceorder`)
+  const device = await getDefaultDevice()
+  const { stdout: order } = await execPromise(`networksetup -listnetworkserviceorder`)
   const block = order.split('\n\n').find((s) => s.includes(`Device: ${device}`))
   if (!block) throw new Error('Get networkservice failed')
   for (const line of block.split('\n')) {
@@ -291,12 +294,10 @@ async function getDefaultService(password?: string): Promise<string> {
   throw new Error('Get service failed')
 }
 
-async function getOriginDNS(password?: string): Promise<void> {
+async function getOriginDNS(): Promise<void> {
   const execPromise = promisify(exec)
-  let sudo = ''
-  if (password) sudo = `echo "${password}" | sudo -S `
-  const service = await getDefaultService(password)
-  const { stdout: dns } = await execPromise(`${sudo}networksetup -getdnsservers "${service}"`)
+  const service = await getDefaultService()
+  const { stdout: dns } = await execPromise(`networksetup -getdnsservers "${service}"`)
   if (dns.startsWith("There aren't any DNS Servers set on")) {
     await patchAppConfig({ originDNS: 'Empty' })
   } else {
@@ -304,25 +305,19 @@ async function getOriginDNS(password?: string): Promise<void> {
   }
 }
 
-async function setDNS(dns: string, password?: string): Promise<void> {
-  const service = await getDefaultService(password)
-  let sudo = ''
-  if (password) sudo = `echo "${password}" | sudo -S `
+async function setDNS(dns: string): Promise<void> {
+  const service = await getDefaultService()
   const execPromise = promisify(exec)
-  await execPromise(`${sudo}networksetup -setdnsservers "${service}" ${dns}`)
+  await execPromise(`networksetup -setdnsservers "${service}" ${dns}`)
 }
 
 async function setPublicDNS(): Promise<void> {
   if (process.platform !== 'darwin') return
   if (net.isOnline()) {
-    const { originDNS, encryptedPassword } = await getAppConfig()
+    const { originDNS } = await getAppConfig()
     if (!originDNS) {
-      let password: string | undefined
-      if (encryptedPassword && isEncryptionAvailable()) {
-        password = safeStorage.decryptString(Buffer.from(encryptedPassword))
-      }
-      await getOriginDNS(password)
-      await setDNS('223.5.5.5', password)
+      await getOriginDNS()
+      await setDNS('223.5.5.5')
     }
   } else {
     if (setPublicDNSTimer) clearTimeout(setPublicDNSTimer)
@@ -333,13 +328,9 @@ async function setPublicDNS(): Promise<void> {
 async function recoverDNS(): Promise<void> {
   if (process.platform !== 'darwin') return
   if (net.isOnline()) {
-    const { originDNS, encryptedPassword } = await getAppConfig()
+    const { originDNS } = await getAppConfig()
     if (originDNS) {
-      let password: string | undefined
-      if (encryptedPassword && isEncryptionAvailable()) {
-        password = safeStorage.decryptString(Buffer.from(encryptedPassword))
-      }
-      await setDNS(originDNS, password)
+      await setDNS(originDNS)
       await patchAppConfig({ originDNS: undefined })
     }
   } else {

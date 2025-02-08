@@ -3,11 +3,11 @@ import yaml from 'yaml'
 import { app, shell } from 'electron'
 import { getControledMihomoConfig } from '../config'
 import { dataDir, exeDir, exePath, isPortable, resourcesFilesDir } from '../utils/dirs'
-import { rm, writeFile } from 'fs/promises'
+import { copyFile, rm, writeFile } from 'fs/promises'
 import path from 'path'
 import { existsSync } from 'fs'
 import os from 'os'
-import { exec, spawn } from 'child_process'
+import { exec, execSync, spawn } from 'child_process'
 import { promisify } from 'util'
 
 export async function checkUpdate(): Promise<IAppVersion | undefined> {
@@ -20,7 +20,8 @@ export async function checkUpdate(): Promise<IAppVersion | undefined> {
         protocol: 'http',
         host: '127.0.0.1',
         port: mixedPort
-      }
+      },
+      responseType: 'text'
     }
   )
   const latest = yaml.parse(res.data, { merge: true }) as IAppVersion
@@ -39,8 +40,8 @@ export async function downloadAndInstallUpdate(version: string): Promise<void> {
     'win32-x64': `mihomo-party-windows-${version}-x64-setup.exe`,
     'win32-ia32': `mihomo-party-windows-${version}-ia32-setup.exe`,
     'win32-arm64': `mihomo-party-windows-${version}-arm64-setup.exe`,
-    'darwin-x64': `mihomo-party-macos-${version}-x64.dmg`,
-    'darwin-arm64': `mihomo-party-macos-${version}-arm64.dmg`
+    'darwin-x64': `mihomo-party-macos-${version}-x64.pkg`,
+    'darwin-arm64': `mihomo-party-macos-${version}-arm64.pkg`
   }
   let file = fileMap[`${process.platform}-${process.arch}`]
   if (isPortable()) {
@@ -51,6 +52,14 @@ export async function downloadAndInstallUpdate(version: string): Promise<void> {
   }
   if (process.platform === 'win32' && parseInt(os.release()) < 10) {
     file = file.replace('windows', 'win7')
+  }
+  if (process.platform === 'darwin') {
+    const productVersion = execSync('sw_vers -productVersion', { encoding: 'utf8' })
+      .toString()
+      .trim()
+    if (parseInt(productVersion) < 11) {
+      file = file.replace('macos', 'catalina')
+    }
   }
   try {
     if (!existsSync(path.join(dataDir(), file))) {
@@ -74,11 +83,12 @@ export async function downloadAndInstallUpdate(version: string): Promise<void> {
       }).unref()
     }
     if (file.endsWith('.7z')) {
+      await copyFile(path.join(resourcesFilesDir(), '7za.exe'), path.join(dataDir(), '7za.exe'))
       spawn(
         'cmd',
         [
           '/C',
-          `""${path.join(resourcesFilesDir(), '7za.exe')}" x -o"${exeDir()}" -y "${path.join(dataDir(), file)}" & start "" "${exePath()}""`
+          `"timeout /t 2 /nobreak >nul && "${path.join(dataDir(), '7za.exe')}" x -o"${exeDir()}" -y "${path.join(dataDir(), file)}" & start "" "${exePath()}""`
         ],
         {
           shell: true,
@@ -87,23 +97,12 @@ export async function downloadAndInstallUpdate(version: string): Promise<void> {
       ).unref()
       app.quit()
     }
-    if (file.endsWith('.dmg')) {
+    if (file.endsWith('.pkg')) {
       try {
         const execPromise = promisify(exec)
-        const name = exePath().split('.app')[0].replace('/Applications/', '')
-        await execPromise(
-          `hdiutil attach "${path.join(dataDir(), file)}" -mountpoint "/Volumes/mihomo-party" -nobrowse`
-        )
-        try {
-          await execPromise(`mv "/Applications/${name}.app" /tmp`)
-          await execPromise('cp -R "/Volumes/mihomo-party/Mihomo Party.app" /Applications/')
-          await execPromise(`rm -rf "/tmp/${name}.app"`)
-        } catch (e) {
-          await execPromise(`mv "/tmp/${name}.app" /Applications`)
-          throw e
-        } finally {
-          await execPromise('hdiutil detach "/Volumes/mihomo-party"')
-        }
+        const shell = `installer -pkg ${path.join(dataDir(), file).replace(' ', '\\\\ ')} -target /`
+        const command = `do shell script "${shell}" with administrator privileges`
+        await execPromise(`osascript -e '${command}'`)
         app.relaunch()
         app.quit()
       } catch {

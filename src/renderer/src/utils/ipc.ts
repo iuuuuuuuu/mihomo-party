@@ -151,6 +151,14 @@ export async function getProfileStr(id: string): Promise<string> {
   return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('getProfileStr', id))
 }
 
+export async function getFileStr(id: string): Promise<string> {
+  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('getFileStr', id))
+}
+
+export async function setFileStr(id: string, str: string): Promise<void> {
+  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('setFileStr', id, str))
+}
+
 export async function setProfileStr(id: string, str: string): Promise<void> {
   return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('setProfileStr', id, str))
 }
@@ -197,14 +205,6 @@ export async function startMonitor(): Promise<void> {
 
 export async function triggerSysProxy(enable: boolean): Promise<void> {
   return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('triggerSysProxy', enable))
-}
-
-export async function isEncryptionAvailable(): Promise<boolean> {
-  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('isEncryptionAvailable'))
-}
-
-export async function encryptString(str: string): Promise<number[]> {
-  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('encryptString', str))
 }
 
 export async function manualGrantCorePermition(password?: string): Promise<void> {
@@ -276,7 +276,11 @@ export async function webdavDelete(filename: string): Promise<void> {
 }
 
 export async function setTitleBarOverlay(overlay: TitleBarOverlayOptions): Promise<void> {
-  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('setTitleBarOverlay', overlay))
+  try {
+    return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('setTitleBarOverlay', overlay))
+  } catch (error) {
+    console.debug('setTitleBarOverlay not supported on this platform')
+  }
 }
 
 export async function setAlwaysOnTop(alwaysOnTop: boolean): Promise<void> {
@@ -307,8 +311,23 @@ export async function getGistUrl(): Promise<string> {
   return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('getGistUrl'))
 }
 
-export async function startSubStoreServer(): Promise<void> {
-  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('startSubStoreServer'))
+export async function startSubStoreFrontendServer(): Promise<void> {
+  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('startSubStoreFrontendServer'))
+}
+
+export async function stopSubStoreFrontendServer(): Promise<void> {
+  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('stopSubStoreFrontendServer'))
+}
+
+export async function startSubStoreBackendServer(): Promise<void> {
+  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('startSubStoreBackendServer'))
+}
+
+export async function stopSubStoreBackendServer(): Promise<void> {
+  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('stopSubStoreBackendServer'))
+}
+export async function downloadSubStore(): Promise<void> {
+  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('downloadSubStore'))
 }
 
 export async function subStorePort(): Promise<number> {
@@ -369,6 +388,10 @@ export async function openFile(
 
 export async function openDevTools(): Promise<void> {
   return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('openDevTools'))
+}
+
+export async function resetAppConfig(): Promise<void> {
+  return ipcErrorWrapper(await window.electron.ipcRenderer.invoke('resetAppConfig'))
 }
 
 export async function createHeapSnapshot(): Promise<void> {

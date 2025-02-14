@@ -1,15 +1,23 @@
-import { Button, Card, CardBody, CardFooter } from '@nextui-org/react'
+import { Button, Card, CardBody, CardFooter, Tooltip } from '@heroui/react'
 import BorderSwitch from '@renderer/components/base/border-swtich'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { triggerSysProxy } from '@renderer/utils/ipc'
 import { AiOutlineGlobal } from 'react-icons/ai'
 import React from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { useTranslation } from 'react-i18next'
 
-const SysproxySwitcher: React.FC = () => {
+interface Props {
+  iconOnly?: boolean
+}
+
+const SysproxySwitcher: React.FC<Props> = (props) => {
+  const { t } = useTranslation()
+  const { iconOnly } = props
   const location = useLocation()
+  const navigate = useNavigate()
   const match = location.pathname.includes('/sysproxy')
   const { appConfig, patchAppConfig } = useAppConfig()
   const { sysProxy, sysproxyCardStatus = 'col-span-1' } = appConfig || {}
@@ -34,6 +42,26 @@ const SysproxySwitcher: React.FC = () => {
     } catch (e) {
       alert(e)
     }
+  }
+
+  if (iconOnly) {
+    return (
+      <div className={`${sysproxyCardStatus} flex justify-center`}>
+        <Tooltip content={t('sider.cards.systemProxy')} placement="right">
+          <Button
+            size="sm"
+            isIconOnly
+            color={match ? 'primary' : 'default'}
+            variant={match ? 'solid' : 'light'}
+            onPress={() => {
+              navigate('/sysproxy')
+            }}
+          >
+            <AiOutlineGlobal className="text-[20px]" />
+          </Button>
+        </Tooltip>
+      </div>
+    )
   }
 
   return (
@@ -67,7 +95,7 @@ const SysproxySwitcher: React.FC = () => {
             </Button>
             <BorderSwitch
               isShowBorder={match && enable}
-              isSelected={enable}
+              isSelected={enable ?? false}
               onValueChange={onChange}
             />
           </div>
@@ -76,7 +104,7 @@ const SysproxySwitcher: React.FC = () => {
           <h3
             className={`text-md font-bold ${match ? 'text-primary-foreground' : 'text-foreground'}`}
           >
-            系统代理
+            {t('sider.cards.systemProxy')}
           </h3>
         </CardFooter>
       </Card>

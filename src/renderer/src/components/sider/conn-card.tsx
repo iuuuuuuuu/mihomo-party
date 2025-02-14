@@ -1,8 +1,8 @@
-import { Button, Card, CardBody, CardFooter } from '@nextui-org/react'
+import { Button, Card, CardBody, CardFooter, Tooltip } from '@heroui/react'
 import { FaCircleArrowDown, FaCircleArrowUp } from 'react-icons/fa6'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { calcTraffic } from '@renderer/utils/calc'
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { IoLink } from 'react-icons/io5'
@@ -10,18 +10,25 @@ import { useTheme } from 'next-themes'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { platform } from '@renderer/utils/init'
 import { Area, AreaChart, ResponsiveContainer } from 'recharts'
+import { useTranslation } from 'react-i18next'
 
 let currentUpload: number | undefined = undefined
 let currentDownload: number | undefined = undefined
 let hasShowTraffic = false
 let drawing = false
 
-const ConnCard: React.FC = () => {
+interface Props {
+  iconOnly?: boolean
+}
+const ConnCard: React.FC<Props> = (props) => {
   const { theme = 'system', systemTheme = 'dark' } = useTheme()
+  const { iconOnly } = props
   const { appConfig } = useAppConfig()
-  const { showTraffic, connectionCardStatus = 'col-span-2', customTheme } = appConfig || {}
+  const { showTraffic = false, connectionCardStatus = 'col-span-2', customTheme } = appConfig || {}
   const location = useLocation()
+  const navigate = useNavigate()
   const match = location.pathname.includes('/connections')
+  const { t } = useTranslation()
 
   const [upload, setUpload] = useState(0)
   const [download, setDownload] = useState(0)
@@ -41,8 +48,8 @@ const ConnCard: React.FC = () => {
   useEffect(() => {
     setChartColor(
       match
-        ? `hsla(${getComputedStyle(document.documentElement).getPropertyValue('--nextui-primary-foreground')})`
-        : `hsla(${getComputedStyle(document.documentElement).getPropertyValue('--nextui-foreground')})`
+        ? `hsla(${getComputedStyle(document.documentElement).getPropertyValue('--heroui-primary-foreground')})`
+        : `hsla(${getComputedStyle(document.documentElement).getPropertyValue('--heroui-foreground')})`
     )
   }, [theme, systemTheme, match])
 
@@ -50,8 +57,8 @@ const ConnCard: React.FC = () => {
     setTimeout(() => {
       setChartColor(
         match
-          ? `hsla(${getComputedStyle(document.documentElement).getPropertyValue('--nextui-primary-foreground')})`
-          : `hsla(${getComputedStyle(document.documentElement).getPropertyValue('--nextui-foreground')})`
+          ? `hsla(${getComputedStyle(document.documentElement).getPropertyValue('--heroui-primary-foreground')})`
+          : `hsla(${getComputedStyle(document.documentElement).getPropertyValue('--heroui-foreground')})`
       )
     }, 200)
   }, [customTheme])
@@ -86,6 +93,26 @@ const ConnCard: React.FC = () => {
       window.electron.ipcRenderer.removeAllListeners('mihomoTraffic')
     }
   }, [showTraffic])
+
+  if (iconOnly) {
+    return (
+      <div className={`${connectionCardStatus} flex justify-center`}>
+        <Tooltip content={t('sider.cards.connections')} placement="right">
+          <Button
+            size="sm"
+            isIconOnly
+            color={match ? 'primary' : 'default'}
+            variant={match ? 'solid' : 'light'}
+            onPress={() => {
+              navigate('/connections')
+            }}
+          >
+            <IoLink className="text-[20px]" />
+          </Button>
+        </Tooltip>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -137,7 +164,7 @@ const ConnCard: React.FC = () => {
               <h3
                 className={`text-md font-bold ${match ? 'text-primary-foreground' : 'text-foreground'}`}
               >
-                连接
+                {t('sider.cards.connections')}
               </h3>
             </CardFooter>
           </Card>
@@ -193,7 +220,7 @@ const ConnCard: React.FC = () => {
             <h3
               className={`text-md font-bold ${match ? 'text-primary-foreground' : 'text-foreground'}`}
             >
-              连接
+              {t('sider.cards.connections')}
             </h3>
           </CardFooter>
         </Card>

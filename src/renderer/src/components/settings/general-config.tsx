@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import SettingCard from '../base/base-setting-card'
 import SettingItem from '../base/base-setting-item'
-import { Button, Input, Select, SelectItem, Switch, Tab, Tabs, Tooltip } from '@nextui-org/react'
+import { Button, Input, Select, SelectItem, Switch, Tab, Tabs, Tooltip } from '@heroui/react'
 import { BiCopy, BiSolidFileImport } from 'react-icons/bi'
 import useSWR from 'swr'
 import {
@@ -23,23 +23,27 @@ import {
   writeTheme
 } from '@renderer/utils/ipc'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
+import debounce from '@renderer/utils/debounce'
 import { platform } from '@renderer/utils/init'
 import { useTheme } from 'next-themes'
 import { IoIosHelpCircle, IoMdCloudDownload } from 'react-icons/io'
 import { MdEditDocument } from 'react-icons/md'
 import CSSEditorModal from './css-editor-modal'
+import { useTranslation } from 'react-i18next'
 
 const GeneralConfig: React.FC = () => {
-  const { data: enable, mutate: mutateEnable } = useSWR('checkAutoRun', checkAutoRun)
+  const { t, i18n } = useTranslation()
+  const { data: enable = false, mutate: mutateEnable } = useSWR('checkAutoRun', checkAutoRun)
   const { appConfig, patchAppConfig } = useAppConfig()
   const [customThemes, setCustomThemes] = useState<{ key: string; label: string }[]>()
   const [openCSSEditor, setOpenCSSEditor] = useState(false)
   const [fetching, setFetching] = useState(false)
+  const [isRelaunching, setIsRelaunching] = useState(false)
   const { setTheme } = useTheme()
   const {
     silentStart = false,
     useDockIcon = true,
-    showTraffic = true,
+    showTraffic = false,
     proxyInTray = true,
     disableTray = false,
     showFloatingWindow: showFloating = false,
@@ -50,7 +54,8 @@ const GeneralConfig: React.FC = () => {
     customTheme = 'default.css',
     envType = [platform === 'win32' ? 'powershell' : 'bash'],
     autoCheckUpdate,
-    appTheme = 'system'
+    appTheme = 'system',
+    language = 'zh-CN'
   } = appConfig || {}
 
   useEffect(() => {
@@ -73,7 +78,26 @@ const GeneralConfig: React.FC = () => {
         />
       )}
       <SettingCard>
-        <SettingItem title="开机自启" divider>
+        <SettingItem title={t('settings.language')} divider>
+          <Select
+            classNames={{ trigger: 'data-[hover=true]:bg-default-200' }}
+            className="w-[150px]"
+            size="sm"
+            selectedKeys={[language]}
+            aria-label={t('settings.language')}
+            onSelectionChange={async (v) => {
+              const newLang = Array.from(v)[0] as 'zh-CN' | 'en-US' | 'ru-RU' | 'fa-IR'
+              await patchAppConfig({ language: newLang })
+              i18n.changeLanguage(newLang)
+            }}
+          >
+            <SelectItem key="zh-CN">中文简体</SelectItem>
+            <SelectItem key="en-US">English</SelectItem>
+            <SelectItem key="ru-RU">Русский</SelectItem>
+            <SelectItem key="fa-IR">فارسی</SelectItem>
+          </Select>
+        </SettingItem>
+        <SettingItem title={t('settings.autoStart')} divider>
           <Switch
             size="sm"
             isSelected={enable}
@@ -92,7 +116,7 @@ const GeneralConfig: React.FC = () => {
             }}
           />
         </SettingItem>
-        <SettingItem title="自动检查更新" divider>
+        <SettingItem title={t('settings.autoCheckUpdate')} divider>
           <Switch
             size="sm"
             isSelected={autoCheckUpdate}
@@ -101,7 +125,7 @@ const GeneralConfig: React.FC = () => {
             }}
           />
         </SettingItem>
-        <SettingItem title="静默启动" divider>
+        <SettingItem title={t('settings.silentStart')} divider>
           <Switch
             size="sm"
             isSelected={silentStart}
@@ -111,9 +135,9 @@ const GeneralConfig: React.FC = () => {
           />
         </SettingItem>
         <SettingItem
-          title="自动开启轻量模式"
+          title={t('settings.autoQuitWithoutCore')}
           actions={
-            <Tooltip content="关闭窗口指定时间后自动进入轻量模式">
+            <Tooltip content={t('settings.autoQuitWithoutCoreTooltip')}>
               <Button isIconOnly size="sm" variant="light">
                 <IoIosHelpCircle className="text-lg" />
               </Button>
@@ -130,12 +154,12 @@ const GeneralConfig: React.FC = () => {
           />
         </SettingItem>
         {autoQuitWithoutCore && (
-          <SettingItem title="自动开启轻量模式延时" divider>
+          <SettingItem title={t('settings.autoQuitWithoutCoreDelay')} divider>
             <Input
               size="sm"
               className="w-[100px]"
               type="number"
-              endContent="秒"
+              endContent={t('common.seconds')}
               value={autoQuitWithoutCoreDelay.toString()}
               onValueChange={async (v: string) => {
                 let num = parseInt(v)
@@ -147,7 +171,7 @@ const GeneralConfig: React.FC = () => {
           </SettingItem>
         )}
         <SettingItem
-          title="复制环境变量类型"
+          title={t('settings.envType')}
           actions={envType.map((type) => (
             <Button
               key={type}
@@ -163,10 +187,12 @@ const GeneralConfig: React.FC = () => {
           divider
         >
           <Select
+            classNames={{ trigger: 'data-[hover=true]:bg-default-200' }}
             className="w-[150px]"
             size="sm"
             selectionMode="multiple"
             selectedKeys={new Set(envType)}
+            aria-label={t('settings.envType')}
             onSelectionChange={async (v) => {
               try {
                 await patchAppConfig({
@@ -182,7 +208,7 @@ const GeneralConfig: React.FC = () => {
             <SelectItem key="powershell">PowerShell</SelectItem>
           </Select>
         </SettingItem>
-        <SettingItem title="显示悬浮窗" divider>
+        <SettingItem title={t('settings.showFloatingWindow')} divider>
           <Switch
             size="sm"
             isSelected={showFloating}
@@ -199,7 +225,7 @@ const GeneralConfig: React.FC = () => {
 
         {showFloating && (
           <>
-            <SettingItem title="根据网速旋转悬浮窗图标" divider>
+            <SettingItem title={t('settings.spinFloatingIcon')} divider>
               <Switch
                 size="sm"
                 isSelected={spinFloatingIcon}
@@ -209,7 +235,7 @@ const GeneralConfig: React.FC = () => {
                 }}
               />
             </SettingItem>
-            <SettingItem title="禁用托盘图标" divider>
+            <SettingItem title={t('settings.disableTray')} divider>
               <Switch
                 size="sm"
                 isSelected={disableTray}
@@ -227,7 +253,7 @@ const GeneralConfig: React.FC = () => {
         )}
         {platform !== 'linux' && (
           <>
-            <SettingItem title="托盘菜单显示节点信息" divider>
+            <SettingItem title={t('settings.proxyInTray')} divider>
               <Switch
                 size="sm"
                 isSelected={proxyInTray}
@@ -237,7 +263,9 @@ const GeneralConfig: React.FC = () => {
               />
             </SettingItem>
             <SettingItem
-              title={`${platform === 'win32' ? '任务栏' : '状态栏'}显示网速信息`}
+              title={t('settings.showTraffic', {
+                context: platform === 'win32' ? 'windows' : 'mac'
+              })}
               divider
             >
               <Switch
@@ -253,7 +281,7 @@ const GeneralConfig: React.FC = () => {
         )}
         {platform === 'darwin' && (
           <>
-            <SettingItem title="显示 Dock 图标" divider>
+            <SettingItem title={t('settings.showDockIcon')} divider>
               <Switch
                 size="sm"
                 isSelected={useDockIcon}
@@ -265,17 +293,25 @@ const GeneralConfig: React.FC = () => {
           </>
         )}
 
-        <SettingItem title="使用系统标题栏" divider>
+        <SettingItem title={t('settings.useWindowFrame')} divider>
           <Switch
             size="sm"
             isSelected={useWindowFrame}
-            onValueChange={async (v) => {
-              await patchAppConfig({ useWindowFrame: v })
-              await relaunchApp()
-            }}
+            isDisabled={isRelaunching}
+            onValueChange={debounce(async (v) => {
+              if (isRelaunching) return
+              setIsRelaunching(true)
+              try {
+                await patchAppConfig({ useWindowFrame: v })
+                await relaunchApp()
+              } catch (e) {
+                alert(e)
+                setIsRelaunching(false)
+              }
+            }, 1000)}
           />
         </SettingItem>
-        <SettingItem title="背景色" divider>
+        <SettingItem title={t('settings.backgroundColor')} divider>
           <Tabs
             size="sm"
             color="primary"
@@ -285,20 +321,20 @@ const GeneralConfig: React.FC = () => {
               patchAppConfig({ appTheme: key as AppTheme })
             }}
           >
-            <Tab key="system" title="自动" />
-            <Tab key="dark" title="深色" />
-            <Tab key="light" title="浅色" />
+            <Tab key="system" title={t('settings.backgroundAuto')} />
+            <Tab key="dark" title={t('settings.backgroundDark')} />
+            <Tab key="light" title={t('settings.backgroundLight')} />
           </Tabs>
         </SettingItem>
         <SettingItem
-          title="主题"
+          title={t('settings.theme')}
           actions={
             <>
               <Button
                 size="sm"
                 isLoading={fetching}
                 isIconOnly
-                title="拉取主题"
+                title={t('settings.fetchTheme')}
                 variant="light"
                 onPress={async () => {
                   setFetching(true)
@@ -317,7 +353,7 @@ const GeneralConfig: React.FC = () => {
               <Button
                 size="sm"
                 isIconOnly
-                title="导入主题"
+                title={t('settings.importTheme')}
                 variant="light"
                 onPress={async () => {
                   const files = await getFilePath(['css'])
@@ -335,7 +371,7 @@ const GeneralConfig: React.FC = () => {
               <Button
                 size="sm"
                 isIconOnly
-                title="编辑主题"
+                title={t('settings.editTheme')}
                 variant="light"
                 onPress={async () => {
                   setOpenCSSEditor(true)
@@ -348,9 +384,11 @@ const GeneralConfig: React.FC = () => {
         >
           {customThemes && (
             <Select
+              classNames={{ trigger: 'data-[hover=true]:bg-default-200' }}
               className="w-[60%]"
               size="sm"
               selectedKeys={new Set([customTheme])}
+              aria-label={t('settings.selectTheme')}
               onSelectionChange={async (v) => {
                 try {
                   await patchAppConfig({ customTheme: v.currentKey as string })

@@ -1,4 +1,4 @@
-import { Button, Divider, Input, Select, SelectItem, Switch } from '@nextui-org/react'
+import { Button, Divider, Input, Select, SelectItem, Switch } from '@heroui/react'
 import BasePage from '@renderer/components/base/base-page'
 import SettingCard from '@renderer/components/base/base-setting-card'
 import SettingItem from '@renderer/components/base/base-setting-item'
@@ -8,19 +8,33 @@ import { platform } from '@renderer/utils/init'
 import { FaNetworkWired } from 'react-icons/fa'
 import { IoMdCloudDownload } from 'react-icons/io'
 import PubSub from 'pubsub-js'
-import { mihomoUpgrade, restartCore, triggerSysProxy } from '@renderer/utils/ipc'
+import {
+  mihomoUpgrade,
+  restartCore,
+  startSubStoreBackendServer,
+  triggerSysProxy
+} from '@renderer/utils/ipc'
 import React, { useState } from 'react'
 import InterfaceModal from '@renderer/components/mihomo/interface-modal'
 import { MdDeleteForever } from 'react-icons/md'
+import { useTranslation } from 'react-i18next'
 
 const CoreMap = {
-  mihomo: '稳定版',
-  'mihomo-alpha': '预览版'
+  mihomo: 'mihomo.stableVersion',
+  'mihomo-alpha': 'mihomo.alphaVersion'
 }
 
 const Mihomo: React.FC = () => {
+  const { t } = useTranslation()
   const { appConfig, patchAppConfig } = useAppConfig()
-  const { core = 'mihomo', maxLogDays = 7, sysProxy } = appConfig || {}
+  const { 
+    core = 'mihomo',
+    maxLogDays = 7,
+    sysProxy,
+    disableLoopbackDetector,
+    disableEmbedCA,
+    disableSystemCA,
+    skipSafePathCheck } = appConfig || {}
   const { controledMihomoConfig, patchControledMihomoConfig } = useControledMihomoConfig()
   const {
     ipv6,
@@ -63,18 +77,29 @@ const Mihomo: React.FC = () => {
     await restartCore()
   }
 
+  const handleConfigChangeWithRestart = async (key: string, value: any) => {
+    try {
+      await patchAppConfig({ [key]: value })
+      await restartCore()
+    } catch (e) {
+      alert(e)
+    } finally {
+      PubSub.publish('mihomo-core-changed')
+    }
+  }
+
   return (
     <>
       {lanOpen && <InterfaceModal onClose={() => setLanOpen(false)} />}
-      <BasePage title="内核设置">
+      <BasePage title={t('mihomo.title')}>
         <SettingCard>
           <SettingItem
-            title="内核版本"
+            title={t('mihomo.coreVersion')}
             actions={
               <Button
                 size="sm"
                 isIconOnly
-                title="升级内核"
+                title={t('mihomo.upgradeCore')}
                 variant="light"
                 isLoading={upgrading}
                 onPress={async () => {
@@ -84,9 +109,14 @@ const Mihomo: React.FC = () => {
                     setTimeout(() => {
                       PubSub.publish('mihomo-core-changed')
                     }, 2000)
+                    if (platform !== 'win32') {
+                      new Notification(t('mihomo.coreAuthLost'), {
+                        body: t('mihomo.coreUpgradeSuccess')
+                      })
+                    }
                   } catch (e) {
                     if (typeof e === 'string' && e.includes('already using latest version')) {
-                      new Notification('已经是最新版本')
+                      new Notification(t('mihomo.alreadyLatestVersion'))
                     } else {
                       alert(e)
                     }
@@ -101,25 +131,20 @@ const Mihomo: React.FC = () => {
             divider
           >
             <Select
+              classNames={{ trigger: 'data-[hover=true]:bg-default-200' }}
               className="w-[100px]"
               size="sm"
+              aria-label={t('mihomo.selectCoreVersion')}
               selectedKeys={new Set([core])}
               onSelectionChange={async (v) => {
-                try {
-                  await patchAppConfig({ core: v.currentKey as 'mihomo' | 'mihomo-alpha' })
-                  await restartCore()
-                } catch (e) {
-                  alert(e)
-                } finally {
-                  PubSub.publish('mihomo-core-changed')
-                }
+                handleConfigChangeWithRestart('core', v.currentKey as 'mihomo' | 'mihomo-alpha')
               }}
             >
-              <SelectItem key="mihomo">{CoreMap['mihomo']}</SelectItem>
-              <SelectItem key="mihomo-alpha">{CoreMap['mihomo-alpha']}</SelectItem>
+              <SelectItem key="mihomo">{t(CoreMap['mihomo'])}</SelectItem>
+              <SelectItem key="mihomo-alpha">{t(CoreMap['mihomo-alpha'])}</SelectItem>
             </Select>
           </SettingItem>
-          <SettingItem title="混合端口" divider>
+          <SettingItem title={t('mihomo.mixedPort')} divider>
             <div className="flex">
               {mixedPortInput !== mixedPort && (
                 <Button
@@ -128,12 +153,13 @@ const Mihomo: React.FC = () => {
                   className="mr-2"
                   onPress={async () => {
                     await onChangeNeedRestart({ 'mixed-port': mixedPortInput })
+                    await startSubStoreBackendServer()
                     if (sysProxy?.enable) {
                       triggerSysProxy(true)
                     }
                   }}
                 >
-                  确认
+                  {t('mihomo.confirm')}
                 </Button>
               )}
 
@@ -150,7 +176,7 @@ const Mihomo: React.FC = () => {
               />
             </div>
           </SettingItem>
-          <SettingItem title="Socks 端口" divider>
+          <SettingItem title={t('mihomo.socksPort')} divider>
             <div className="flex">
               {socksPortInput !== socksPort && (
                 <Button
@@ -161,7 +187,7 @@ const Mihomo: React.FC = () => {
                     onChangeNeedRestart({ 'socks-port': socksPortInput })
                   }}
                 >
-                  确认
+                  {t('mihomo.confirm')}
                 </Button>
               )}
 
@@ -178,7 +204,7 @@ const Mihomo: React.FC = () => {
               />
             </div>
           </SettingItem>
-          <SettingItem title="Http 端口" divider>
+          <SettingItem title={t('mihomo.httpPort')} divider>
             <div className="flex">
               {httpPortInput !== httpPort && (
                 <Button
@@ -189,7 +215,7 @@ const Mihomo: React.FC = () => {
                     onChangeNeedRestart({ port: httpPortInput })
                   }}
                 >
-                  确认
+                  {t('mihomo.confirm')}
                 </Button>
               )}
 
@@ -207,7 +233,7 @@ const Mihomo: React.FC = () => {
             </div>
           </SettingItem>
           {platform !== 'win32' && (
-            <SettingItem title="Redir 端口" divider>
+            <SettingItem title={t('mihomo.redirPort')} divider>
               <div className="flex">
                 {redirPortInput !== redirPort && (
                   <Button
@@ -218,7 +244,7 @@ const Mihomo: React.FC = () => {
                       onChangeNeedRestart({ 'redir-port': redirPortInput })
                     }}
                   >
-                    确认
+                    {t('mihomo.confirm')}
                   </Button>
                 )}
 
@@ -248,7 +274,7 @@ const Mihomo: React.FC = () => {
                       onChangeNeedRestart({ 'tproxy-port': tproxyPortInput })
                     }}
                   >
-                    确认
+                    {t('mihomo.confirm')}
                   </Button>
                 )}
 
@@ -266,7 +292,7 @@ const Mihomo: React.FC = () => {
               </div>
             </SettingItem>
           )}
-          <SettingItem title="外部控制地址" divider>
+          <SettingItem title={t('mihomo.externalController')} divider>
             <div className="flex">
               {externalControllerInput !== externalController && (
                 <Button
@@ -279,7 +305,7 @@ const Mihomo: React.FC = () => {
                     })
                   }}
                 >
-                  确认
+                  {t('mihomo.confirm')}
                 </Button>
               )}
 
@@ -293,7 +319,7 @@ const Mihomo: React.FC = () => {
               />
             </div>
           </SettingItem>
-          <SettingItem title="外部控制访问密钥" divider>
+          <SettingItem title={t('mihomo.externalControllerSecret')} divider>
             <div className="flex">
               {secretInput !== secret && (
                 <Button
@@ -304,7 +330,7 @@ const Mihomo: React.FC = () => {
                     onChangeNeedRestart({ secret: secretInput })
                   }}
                 >
-                  确认
+                  {t('mihomo.confirm')}
                 </Button>
               )}
 
@@ -319,7 +345,7 @@ const Mihomo: React.FC = () => {
               />
             </div>
           </SettingItem>
-          <SettingItem title="IPv6" divider>
+          <SettingItem title={t('mihomo.ipv6')} divider>
             <Switch
               size="sm"
               isSelected={ipv6}
@@ -329,7 +355,7 @@ const Mihomo: React.FC = () => {
             />
           </SettingItem>
           <SettingItem
-            title="允许局域网连接"
+            title={t('mihomo.allowLanConnection')}
             actions={
               <Button
                 size="sm"
@@ -354,7 +380,7 @@ const Mihomo: React.FC = () => {
           </SettingItem>
           {allowLan && (
             <>
-              <SettingItem title="允许连接的 IP 段">
+              <SettingItem title={t('mihomo.allowedIpSegments')}>
                 {lanAllowedIpsInput.join('') !== lanAllowedIps.join('') && (
                   <Button
                     size="sm"
@@ -363,7 +389,7 @@ const Mihomo: React.FC = () => {
                       onChangeNeedRestart({ 'lan-allowed-ips': lanAllowedIpsInput })
                     }}
                   >
-                    确认
+                    {t('mihomo.confirm')}
                   </Button>
                 )}
               </SettingItem>
@@ -392,7 +418,7 @@ const Mihomo: React.FC = () => {
                           size="sm"
                           variant="flat"
                           color="warning"
-                          onClick={() =>
+                          onPress={() =>
                             setLanAllowedIpsInput(lanAllowedIpsInput.filter((_, i) => i !== index))
                           }
                         >
@@ -404,7 +430,7 @@ const Mihomo: React.FC = () => {
                 })}
               </div>
               <Divider className="mb-2" />
-              <SettingItem title="禁止连接的 IP 段">
+              <SettingItem title={t('mihomo.disallowedIpSegments')}>
                 {lanDisallowedIpsInput.join('') !== lanDisallowedIps.join('') && (
                   <Button
                     size="sm"
@@ -413,7 +439,7 @@ const Mihomo: React.FC = () => {
                       onChangeNeedRestart({ 'lan-disallowed-ips': lanDisallowedIpsInput })
                     }}
                   >
-                    确认
+                    {t('mihomo.confirm')}
                   </Button>
                 )}
               </SettingItem>
@@ -442,7 +468,7 @@ const Mihomo: React.FC = () => {
                           size="sm"
                           variant="flat"
                           color="warning"
-                          onClick={() =>
+                          onPress={() =>
                             setLanDisallowedIpsInput(
                               lanDisallowedIpsInput.filter((_, i) => i !== index)
                             )
@@ -458,7 +484,7 @@ const Mihomo: React.FC = () => {
               <Divider className="mb-2" />
             </>
           )}
-          <SettingItem title="用户验证">
+          <SettingItem title={t('mihomo.userVerification')}>
             {authenticationInput.join('') !== authentication.join('') && (
               <Button
                 size="sm"
@@ -467,7 +493,7 @@ const Mihomo: React.FC = () => {
                   onChangeNeedRestart({ authentication: authenticationInput })
                 }}
               >
-                确认
+                {t('mihomo.confirm')}
               </Button>
             )}
           </SettingItem>
@@ -480,7 +506,7 @@ const Mihomo: React.FC = () => {
                     <Input
                       size="sm"
                       fullWidth
-                      placeholder="用户名"
+                      placeholder={t('mihomo.username.placeholder')}
                       value={user || ''}
                       onValueChange={(v) => {
                         if (index === authenticationInput.length) {
@@ -500,7 +526,7 @@ const Mihomo: React.FC = () => {
                     <Input
                       size="sm"
                       fullWidth
-                      placeholder="密码"
+                      placeholder={t('mihomo.password.placeholder')}
                       value={pass || ''}
                       onValueChange={(v) => {
                         if (index === authenticationInput.length) {
@@ -520,7 +546,7 @@ const Mihomo: React.FC = () => {
                         size="sm"
                         variant="flat"
                         color="warning"
-                        onClick={() =>
+                        onPress={() =>
                           setAuthenticationInput(authenticationInput.filter((_, i) => i !== index))
                         }
                       >
@@ -533,7 +559,7 @@ const Mihomo: React.FC = () => {
             })}
           </div>
           <Divider className="mb-2" />
-          <SettingItem title="允许跳过验证的 IP 段">
+          <SettingItem title={t('mihomo.skipAuthPrefixes')}>
             {skipAuthPrefixesInput.join('') !== skipAuthPrefixes.join('') && (
               <Button
                 size="sm"
@@ -542,7 +568,7 @@ const Mihomo: React.FC = () => {
                   onChangeNeedRestart({ 'skip-auth-prefixes': skipAuthPrefixesInput })
                 }}
               >
-                确认
+                {t('mihomo.confirm')}
               </Button>
             )}
           </SettingItem>
@@ -554,7 +580,7 @@ const Mihomo: React.FC = () => {
                     disabled={index === 0}
                     size="sm"
                     fullWidth
-                    placeholder="IP 段"
+                    placeholder={t('mihomo.ipSegment.placeholder')}
                     value={ipcidr || ''}
                     onValueChange={(v) => {
                       if (index === skipAuthPrefixesInput.length) {
@@ -572,7 +598,7 @@ const Mihomo: React.FC = () => {
                       size="sm"
                       variant="flat"
                       color="warning"
-                      onClick={() =>
+                      onPress={() =>
                         setSkipAuthPrefixesInput(
                           skipAuthPrefixesInput.filter((_, i) => i !== index)
                         )
@@ -586,7 +612,7 @@ const Mihomo: React.FC = () => {
             })}
           </div>
           <Divider className="mb-2" />
-          <SettingItem title="使用 RTT 延迟测试" divider>
+          <SettingItem title={t('mihomo.useRttDelayTest')} divider>
             <Switch
               size="sm"
               isSelected={unifiedDelay}
@@ -595,7 +621,7 @@ const Mihomo: React.FC = () => {
               }}
             />
           </SettingItem>
-          <SettingItem title="TCP 并发" divider>
+          <SettingItem title={t('mihomo.tcpConcurrent')} divider>
             <Switch
               size="sm"
               isSelected={tcpConcurrent}
@@ -604,7 +630,7 @@ const Mihomo: React.FC = () => {
               }}
             />
           </SettingItem>
-          <SettingItem title="存储选择节点" divider>
+          <SettingItem title={t('mihomo.storeSelectedNode')} divider>
             <Switch
               size="sm"
               isSelected={storeSelected}
@@ -613,7 +639,7 @@ const Mihomo: React.FC = () => {
               }}
             />
           </SettingItem>
-          <SettingItem title="存储 FakeIP" divider>
+          <SettingItem title={t('mihomo.storeFakeIp')} divider>
             <Switch
               size="sm"
               isSelected={storeFakeIp}
@@ -622,7 +648,43 @@ const Mihomo: React.FC = () => {
               }}
             />
           </SettingItem>
-          <SettingItem title="日志保留天数" divider>
+          <SettingItem title={t('mihomo.disableLoopbackDetector')} divider>
+            <Switch
+              size="sm"
+              isSelected={disableLoopbackDetector}
+              onValueChange={(v) => {
+                handleConfigChangeWithRestart('disableLoopbackDetector', v)
+              }}
+            />
+          </SettingItem>
+          <SettingItem title={t('mihomo.skipSafePathCheck')} divider>
+            <Switch
+              size="sm"
+              isSelected={skipSafePathCheck}
+              onValueChange={(v) => {
+                handleConfigChangeWithRestart('skipSafePathCheck', v)
+              }}
+            />
+          </SettingItem>
+          <SettingItem title={t('mihomo.disableEmbedCA')} divider>
+            <Switch
+              size="sm"
+              isSelected={disableEmbedCA}
+              onValueChange={(v) => {
+                handleConfigChangeWithRestart('disableEmbedCA', v)
+              }}
+            />
+          </SettingItem>
+          <SettingItem title={t('mihomo.disableSystemCA')} divider>
+            <Switch
+              size="sm"
+              isSelected={disableSystemCA}
+              onValueChange={(v) => {
+                handleConfigChangeWithRestart('disableSystemCA', v)
+              }}
+            />
+          </SettingItem>
+          <SettingItem title={t('mihomo.logRetentionDays')} divider>
             <Input
               size="sm"
               type="number"
@@ -633,34 +695,38 @@ const Mihomo: React.FC = () => {
               }}
             />
           </SettingItem>
-          <SettingItem title="日志等级" divider>
+          <SettingItem title={t('mihomo.logLevel')} divider>
             <Select
+              classNames={{ trigger: 'data-[hover=true]:bg-default-200' }}
               className="w-[100px]"
               size="sm"
+              aria-label={t('mihomo.selectLogLevel')}
               selectedKeys={new Set([logLevel])}
               onSelectionChange={(v) => {
                 onChangeNeedRestart({ 'log-level': v.currentKey as LogLevel })
               }}
             >
-              <SelectItem key="silent">静默</SelectItem>
-              <SelectItem key="error">错误</SelectItem>
-              <SelectItem key="warning">警告</SelectItem>
-              <SelectItem key="info">信息</SelectItem>
-              <SelectItem key="debug">调试</SelectItem>
+              <SelectItem key="silent">{t('mihomo.silent')}</SelectItem>
+              <SelectItem key="error">{t('mihomo.error')}</SelectItem>
+              <SelectItem key="warning">{t('mihomo.warning')}</SelectItem>
+              <SelectItem key="info">{t('mihomo.info')}</SelectItem>
+              <SelectItem key="debug">{t('mihomo.debug')}</SelectItem>
             </Select>
           </SettingItem>
-          <SettingItem title="查找进程">
+          <SettingItem title={t('mihomo.findProcess')} divider>
             <Select
+              classNames={{ trigger: 'data-[hover=true]:bg-default-200' }}
               className="w-[100px]"
               size="sm"
+              aria-label={t('mihomo.selectFindProcessMode')}
               selectedKeys={new Set([findProcessMode])}
               onSelectionChange={(v) => {
                 onChangeNeedRestart({ 'find-process-mode': v.currentKey as FindProcessMode })
               }}
             >
-              <SelectItem key="strict">自动</SelectItem>
-              <SelectItem key="off">关闭</SelectItem>
-              <SelectItem key="always">开启</SelectItem>
+              <SelectItem key="strict">{t('mihomo.strict')}</SelectItem>
+              <SelectItem key="off">{t('mihomo.off')}</SelectItem>
+              <SelectItem key="always">{t('mihomo.always')}</SelectItem>
             </Select>
           </SettingItem>
         </SettingCard>

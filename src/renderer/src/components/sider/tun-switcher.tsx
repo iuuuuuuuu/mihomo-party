@@ -1,21 +1,26 @@
-import { Button, Card, CardBody, CardFooter } from '@nextui-org/react'
+import { Button, Card, CardBody, CardFooter, Tooltip } from '@heroui/react'
 import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
 import BorderSwitch from '@renderer/components/base/border-swtich'
 import { TbDeviceIpadHorizontalBolt } from 'react-icons/tb'
-import { useLocation } from 'react-router-dom'
-import { encryptString, isEncryptionAvailable, restartCore } from '@renderer/utils/ipc'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { restartCore } from '@renderer/utils/ipc'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { platform } from '@renderer/utils/init'
-import React, { useState } from 'react'
+import React from 'react'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
-import BasePasswordModal from '../base/base-password-modal'
+import { useTranslation } from 'react-i18next'
 
-const TunSwitcher: React.FC = () => {
+interface Props {
+  iconOnly?: boolean
+}
+
+const TunSwitcher: React.FC<Props> = (props) => {
+  const { t } = useTranslation()
+  const { iconOnly } = props
   const location = useLocation()
+  const navigate = useNavigate()
   const match = location.pathname.includes('/tun') || false
-  const [openPasswordModal, setOpenPasswordModal] = useState(false)
-  const { appConfig, patchAppConfig } = useAppConfig()
+  const { appConfig } = useAppConfig()
   const { tunCardStatus = 'col-span-1' } = appConfig || {}
   const { controledMihomoConfig, patchControledMihomoConfig } = useControledMihomoConfig()
   const { tun } = controledMihomoConfig || {}
@@ -32,19 +37,6 @@ const TunSwitcher: React.FC = () => {
   })
   const transform = tf ? { x: tf.x, y: tf.y, scaleX: 1, scaleY: 1 } : null
   const onChange = async (enable: boolean): Promise<void> => {
-    if (enable && platform !== 'win32') {
-      const encryptionAvailable = await isEncryptionAvailable()
-      if (!appConfig?.encryptedPassword && encryptionAvailable) {
-        setOpenPasswordModal(true)
-        return
-      }
-      if (!appConfig?.encryptedPassword && !encryptionAvailable) {
-        alert('加密不可用，请手动给内核授权')
-        await patchAppConfig({ encryptedPassword: [] })
-        return
-      }
-    }
-
     if (enable) {
       await patchControledMihomoConfig({ tun: { enable }, dns: { enable: true } })
     } else {
@@ -53,6 +45,26 @@ const TunSwitcher: React.FC = () => {
     await restartCore()
     window.electron.ipcRenderer.send('updateFloatingWindow')
     window.electron.ipcRenderer.send('updateTrayMenu')
+  }
+
+  if (iconOnly) {
+    return (
+      <div className={`${tunCardStatus} flex justify-center`}>
+        <Tooltip content={t('sider.cards.tun')} placement="right">
+          <Button
+            size="sm"
+            isIconOnly
+            color={match ? 'primary' : 'default'}
+            variant={match ? 'solid' : 'light'}
+            onPress={() => {
+              navigate('/tun')
+            }}
+          >
+            <TbDeviceIpadHorizontalBolt className="text-[20px]" />
+          </Button>
+        </Tooltip>
+      </div>
+    )
   }
 
   return (
@@ -65,24 +77,6 @@ const TunSwitcher: React.FC = () => {
       }}
       className={`${tunCardStatus} tun-card`}
     >
-      {openPasswordModal && (
-        <BasePasswordModal
-          onCancel={() => setOpenPasswordModal(false)}
-          onConfirm={async (password: string) => {
-            try {
-              const encrypted = await encryptString(password)
-              await patchAppConfig({ encryptedPassword: encrypted })
-              await patchControledMihomoConfig({ tun: { enable: true }, dns: { enable: true } })
-              await restartCore()
-              window.electron.ipcRenderer.send('updateTrayMenu')
-              setOpenPasswordModal(false)
-            } catch (e) {
-              alert(e)
-            }
-          }}
-        />
-      )}
-
       <Card
         fullWidth
         ref={setNodeRef}
@@ -104,7 +98,7 @@ const TunSwitcher: React.FC = () => {
             </Button>
             <BorderSwitch
               isShowBorder={match && enable}
-              isSelected={enable}
+              isSelected={enable ?? false}
               onValueChange={onChange}
             />
           </div>
@@ -113,7 +107,7 @@ const TunSwitcher: React.FC = () => {
           <h3
             className={`text-md font-bold ${match ? 'text-primary-foreground' : 'text-foreground'}`}
           >
-            虚拟网卡
+            {t('sider.cards.tun')}
           </h3>
         </CardFooter>
       </Card>

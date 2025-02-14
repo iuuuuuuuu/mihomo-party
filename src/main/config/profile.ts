@@ -1,5 +1,5 @@
 import { getControledMihomoConfig } from './controledMihomo'
-import { profileConfigPath, profilePath } from '../utils/dirs'
+import { mihomoProfileWorkDir, mihomoWorkDir, profileConfigPath, profilePath } from '../utils/dirs'
 import { addProfileUpdater } from '../core/profileUpdater'
 import { readFile, rm, writeFile } from 'fs/promises'
 import { restartCore } from '../core/manager'
@@ -9,6 +9,7 @@ import axios, { AxiosResponse } from 'axios'
 import yaml from 'yaml'
 import { defaultProfile } from '../utils/template'
 import { subStorePort } from '../resolve/server'
+import { join } from 'path'
 
 let profileConfig: IProfileConfig // profile.yaml
 
@@ -92,6 +93,9 @@ export async function removeProfileItem(id: string): Promise<void> {
   if (shouldRestart) {
     await restartCore()
   }
+  if (existsSync(mihomoProfileWorkDir(id))) {
+    await rm(mihomoProfileWorkDir(id), { recursive: true })
+  }
 }
 
 export async function getCurrentProfileItem(): Promise<IProfileItem> {
@@ -121,6 +125,7 @@ export async function createProfile(item: Partial<IProfileItem>): Promise<IProfi
       if (newItem.substore) {
         const urlObj = new URL(`http://127.0.0.1:${subStorePort}${item.url}`)
         urlObj.searchParams.set('target', 'ClashMeta')
+        urlObj.searchParams.set('noCache', 'true')
         if (newItem.useProxy) {
           urlObj.searchParams.set('proxy', `http://127.0.0.1:${mixedPort}`)
         } else {
@@ -129,7 +134,8 @@ export async function createProfile(item: Partial<IProfileItem>): Promise<IProfi
         res = await axios.get(urlObj.toString(), {
           headers: {
             'User-Agent': userAgent || 'clash.meta'
-          }
+          },
+          responseType: 'text'
         })
       } else {
         res = await axios.get(item.url, {
@@ -142,7 +148,8 @@ export async function createProfile(item: Partial<IProfileItem>): Promise<IProfi
             : false,
           headers: {
             'User-Agent': userAgent || 'clash.meta'
-          }
+          },
+          responseType: 'text'
         })
       }
 
@@ -213,4 +220,35 @@ function parseSubinfo(str: string): ISubscriptionUserInfo {
     obj[key] = parseInt(value)
   })
   return obj
+}
+
+function isAbsolutePath(path: string): boolean {
+  return path.startsWith('/') || /^[a-zA-Z]:\\/.test(path)
+}
+
+export async function getFileStr(path: string): Promise<string> {
+  const { diffWorkDir = false } = await getAppConfig()
+  const { current } = await getProfileConfig()
+  if (isAbsolutePath(path)) {
+    return await readFile(path, 'utf-8')
+  } else {
+    return await readFile(
+      join(diffWorkDir ? mihomoProfileWorkDir(current) : mihomoWorkDir(), path),
+      'utf-8'
+    )
+  }
+}
+
+export async function setFileStr(path: string, content: string): Promise<void> {
+  const { diffWorkDir = false } = await getAppConfig()
+  const { current } = await getProfileConfig()
+  if (isAbsolutePath(path)) {
+    await writeFile(path, content, 'utf-8')
+  } else {
+    await writeFile(
+      join(diffWorkDir ? mihomoProfileWorkDir(current) : mihomoWorkDir(), path),
+      content,
+      'utf-8'
+    )
+  }
 }

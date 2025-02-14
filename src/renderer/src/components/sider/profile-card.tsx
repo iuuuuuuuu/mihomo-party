@@ -1,6 +1,6 @@
-import { Button, Card, CardBody, CardFooter, Chip, Progress, Tooltip } from '@nextui-org/react'
+import { Button, Card, CardBody, CardFooter, Chip, Progress, Tooltip } from '@heroui/react'
 import { useProfileConfig } from '@renderer/hooks/use-profile-config'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { calcTraffic, calcPercent } from '@renderer/utils/calc'
 import { CgLoadbarDoc } from 'react-icons/cg'
 import { IoMdRefresh } from 'react-icons/io'
@@ -8,19 +8,27 @@ import relativeTime from 'dayjs/plugin/relativeTime'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import 'dayjs/locale/zh-cn'
-import dayjs from 'dayjs'
-import { useState } from 'react'
+import dayjs from '@renderer/utils/dayjs'
+import React, { useState } from 'react'
 import ConfigViewer from './config-viewer'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { TiFolder } from 'react-icons/ti'
+import { useTranslation } from 'react-i18next'
 
 dayjs.extend(relativeTime)
 dayjs.locale('zh-cn')
 
-const ProfileCard: React.FC = () => {
-  const { appConfig } = useAppConfig()
+interface Props {
+  iconOnly?: boolean
+}
+
+const ProfileCard: React.FC<Props> = (props) => {
+  const { t } = useTranslation()
+  const { appConfig, patchAppConfig } = useAppConfig()
+  const { iconOnly } = props
   const { profileCardStatus = 'col-span-2', profileDisplayDate = 'expire' } = appConfig || {}
   const location = useLocation()
+  const navigate = useNavigate()
   const match = location.pathname.includes('/profiles')
   const [updating, setUpdating] = useState(false)
   const [showRuntimeConfig, setShowRuntimeConfig] = useState(false)
@@ -40,12 +48,32 @@ const ProfileCard: React.FC = () => {
   const info = items?.find((item) => item.id === current) ?? {
     id: 'default',
     type: 'local',
-    name: '空白订阅'
+    name: t('sider.cards.emptyProfile')
   }
 
   const extra = info?.extra
   const usage = (extra?.upload ?? 0) + (extra?.download ?? 0)
   const total = extra?.total ?? 0
+
+  if (iconOnly) {
+    return (
+      <div className={`${profileCardStatus} flex justify-center`}>
+        <Tooltip content={t('sider.cards.profiles')} placement="right">
+          <Button
+            size="sm"
+            isIconOnly
+            color={match ? 'primary' : 'default'}
+            variant={match ? 'solid' : 'light'}
+            onPress={() => {
+              navigate('/profiles')
+            }}
+          >
+            <TiFolder className="text-[20px]" />
+          </Button>
+        </Tooltip>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -83,7 +111,7 @@ const ProfileCard: React.FC = () => {
                 <Button
                   isIconOnly
                   size="sm"
-                  title="查看当前运行时配置"
+                  title={t('sider.cards.viewRuntimeConfig')}
                   variant="light"
                   color="default"
                   onPress={() => {
@@ -122,11 +150,27 @@ const ProfileCard: React.FC = () => {
               >
                 <small>{`${calcTraffic(usage)}/${calcTraffic(total)}`}</small>
                 {profileDisplayDate === 'expire' ? (
-                  <small>
-                    {extra.expire ? dayjs.unix(extra.expire).format('YYYY-MM-DD') : '长期有效'}
-                  </small>
+                  <Button
+                    size="sm"
+                    variant="light"
+                    className={`h-[20px] p-1 m-0 ${match ? 'text-primary-foreground' : 'text-foreground'}`}
+                    onPress={async () => {
+                      await patchAppConfig({ profileDisplayDate: 'update' })
+                    }}
+                  >
+                    {extra.expire ? dayjs.unix(extra.expire).format('YYYY-MM-DD') : t('sider.cards.neverExpire')}
+                  </Button>
                 ) : (
-                  <small>{dayjs(info.updated).fromNow()}</small>
+                  <Button
+                    size="sm"
+                    variant="light"
+                    className={`h-[20px] p-1 m-0 ${match ? 'text-primary-foreground' : 'text-foreground'}`}
+                    onPress={async () => {
+                      await patchAppConfig({ profileDisplayDate: 'expire' })
+                    }}
+                  >
+                    {dayjs(info.updated).fromNow()}
+                  </Button>
                 )}
               </div>
             )}
@@ -141,7 +185,7 @@ const ProfileCard: React.FC = () => {
                   variant="bordered"
                   className={`${match ? 'text-primary-foreground border-primary-foreground' : 'border-primary text-primary'}`}
                 >
-                  远程
+                  {t('sider.cards.remote')}
                 </Chip>
                 <small>{dayjs(info.updated).fromNow()}</small>
               </div>
@@ -155,13 +199,14 @@ const ProfileCard: React.FC = () => {
                   variant="bordered"
                   className={`${match ? 'text-primary-foreground border-primary-foreground' : 'border-primary text-primary'}`}
                 >
-                  本地
+                  {t('sider.cards.local')}
                 </Chip>
               </div>
             )}
             {extra && (
               <Progress
                 className="w-full"
+                aria-label={t('sider.cards.trafficUsage')}
                 classNames={{ indicator: match ? 'bg-primary-foreground' : 'bg-foreground' }}
                 value={calcPercent(extra?.upload, extra?.download, extra?.total)}
               />
@@ -195,7 +240,7 @@ const ProfileCard: React.FC = () => {
             <h3
               className={`text-md font-bold ${match ? 'text-primary-foreground' : 'text-foreground'}`}
             >
-              订阅管理
+              {t('sider.cards.profiles')}
             </h3>
           </CardFooter>
         </Card>

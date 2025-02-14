@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, safeStorage } from 'electron'
+import { app, dialog, ipcMain } from 'electron'
 import {
   mihomoChangeProxy,
   mihomoCloseAllConnections,
@@ -31,6 +31,8 @@ import {
   removeProfileItem,
   changeCurrentProfile,
   getProfileStr,
+  getFileStr,
+  setFileStr,
   setProfileStr,
   updateProfileItem,
   setProfileConfig,
@@ -43,13 +45,16 @@ import {
   setOverride,
   updateOverrideItem
 } from '../config'
-import { startSubStoreServer, subStoreFrontendPort, subStorePort } from '../resolve/server'
 import {
-  isEncryptionAvailable,
-  manualGrantCorePermition,
-  quitWithoutCore,
-  restartCore
-} from '../core/manager'
+  startSubStoreFrontendServer,
+  startSubStoreBackendServer,
+  stopSubStoreFrontendServer,
+  stopSubStoreBackendServer,
+  downloadSubStore,
+  subStoreFrontendPort,
+  subStorePort
+} from '../resolve/server'
+import { manualGrantCorePermition, quitWithoutCore, restartCore } from '../core/manager'
 import { triggerSysProxy } from '../sys/sysproxy'
 import { checkUpdate, downloadAndInstallUpdate } from '../resolve/autoUpdater'
 import {
@@ -57,6 +62,7 @@ import {
   openFile,
   openUWPTool,
   readTextFile,
+  resetAppConfig,
   setNativeTheme,
   setupFirewall
 } from '../sys/misc'
@@ -82,6 +88,7 @@ import { getGistUrl } from '../resolve/gistApi'
 import { getImageDataURL } from './image'
 import { startMonitor } from '../resolve/trafficMonitor'
 import { closeFloatingWindow, showContextMenu, showFloatingWindow } from '../resolve/floatingWindow'
+import i18next from 'i18next'
 
 function ipcErrorWrapper<T>( // eslint-disable-next-line @typescript-eslint/no-explicit-any
   fn: (...args: any[]) => Promise<T> // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -149,6 +156,8 @@ export function registerIpcMainHandlers(): void {
   ipcMain.handle('getCurrentProfileItem', ipcErrorWrapper(getCurrentProfileItem))
   ipcMain.handle('getProfileItem', (_e, id) => ipcErrorWrapper(getProfileItem)(id))
   ipcMain.handle('getProfileStr', (_e, id) => ipcErrorWrapper(getProfileStr)(id))
+  ipcMain.handle('getFileStr', (_e, path) => ipcErrorWrapper(getFileStr)(path))
+  ipcMain.handle('setFileStr', (_e, path, str) => ipcErrorWrapper(setFileStr)(path, str))
   ipcMain.handle('setProfileStr', (_e, id, str) => ipcErrorWrapper(setProfileStr)(id, str))
   ipcMain.handle('updateProfileItem', (_e, item) => ipcErrorWrapper(updateProfileItem)(item))
   ipcMain.handle('changeCurrentProfile', (_e, id) => ipcErrorWrapper(changeCurrentProfile)(id))
@@ -165,8 +174,6 @@ export function registerIpcMainHandlers(): void {
   ipcMain.handle('restartCore', ipcErrorWrapper(restartCore))
   ipcMain.handle('startMonitor', (_e, detached) => ipcErrorWrapper(startMonitor)(detached))
   ipcMain.handle('triggerSysProxy', (_e, enable) => ipcErrorWrapper(triggerSysProxy)(enable))
-  ipcMain.handle('isEncryptionAvailable', isEncryptionAvailable)
-  ipcMain.handle('encryptString', (_e, str) => encryptString(str))
   ipcMain.handle('manualGrantCorePermition', (_e, password) =>
     ipcErrorWrapper(manualGrantCorePermition)(password)
   )
@@ -190,7 +197,14 @@ export function registerIpcMainHandlers(): void {
   ipcMain.handle('registerShortcut', (_e, oldShortcut, newShortcut, action) =>
     ipcErrorWrapper(registerShortcut)(oldShortcut, newShortcut, action)
   )
-  ipcMain.handle('startSubStoreServer', () => ipcErrorWrapper(startSubStoreServer)())
+  ipcMain.handle('startSubStoreFrontendServer', () =>
+    ipcErrorWrapper(startSubStoreFrontendServer)()
+  )
+  ipcMain.handle('stopSubStoreFrontendServer', () => ipcErrorWrapper(stopSubStoreFrontendServer)())
+  ipcMain.handle('startSubStoreBackendServer', () => ipcErrorWrapper(startSubStoreBackendServer)())
+  ipcMain.handle('stopSubStoreBackendServer', () => ipcErrorWrapper(stopSubStoreBackendServer)())
+  ipcMain.handle('downloadSubStore', () => ipcErrorWrapper(downloadSubStore)())
+
   ipcMain.handle('subStorePort', () => subStorePort)
   ipcMain.handle('subStoreFrontendPort', () => subStoreFrontendPort)
   ipcMain.handle('subStoreSubs', () => ipcErrorWrapper(subStoreSubs)())
@@ -201,7 +215,9 @@ export function registerIpcMainHandlers(): void {
   })
   ipcMain.handle('setTitleBarOverlay', (_e, overlay) =>
     ipcErrorWrapper(async (overlay): Promise<void> => {
-      mainWindow?.setTitleBarOverlay(overlay)
+      if (mainWindow && typeof mainWindow.setTitleBarOverlay === 'function') {
+        mainWindow.setTitleBarOverlay(overlay)
+      }
     })(overlay)
   )
   ipcMain.handle('setAlwaysOnTop', (_e, alwaysOnTop) => {
@@ -236,14 +252,18 @@ export function registerIpcMainHandlers(): void {
   ipcMain.handle('alert', (_e, msg) => {
     dialog.showErrorBox('Mihomo Party', msg)
   })
+  ipcMain.handle('resetAppConfig', resetAppConfig)
   ipcMain.handle('relaunchApp', () => {
     app.relaunch()
     app.quit()
   })
   ipcMain.handle('quitWithoutCore', ipcErrorWrapper(quitWithoutCore))
   ipcMain.handle('quitApp', () => app.quit())
-}
-
-function encryptString(str: string): number[] {
-  return safeStorage.encryptString(str).toJSON().data
+  
+  // Add language change handler
+  ipcMain.handle('changeLanguage', async (_e, lng) => {
+    await i18next.changeLanguage(lng)
+    // 触发托盘菜单更新
+    ipcMain.emit('updateTrayMenu')
+  })
 }

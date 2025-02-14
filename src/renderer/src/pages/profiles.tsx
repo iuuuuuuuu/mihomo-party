@@ -8,13 +8,14 @@ import {
   DropdownMenu,
   DropdownTrigger,
   Input
-} from '@nextui-org/react'
+} from '@heroui/react'
 import BasePage from '@renderer/components/base/base-page'
 import ProfileItem from '@renderer/components/profiles/profile-item'
 import { useProfileConfig } from '@renderer/hooks/use-profile-config'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { getFilePath, readTextFile, subStoreCollections, subStoreSubs } from '@renderer/utils/ipc'
-import { ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import type { KeyboardEvent } from 'react'
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MdContentPaste } from 'react-icons/md'
 import {
   DndContext,
@@ -30,8 +31,10 @@ import { IoMdRefresh } from 'react-icons/io'
 import SubStoreIcon from '@renderer/components/base/substore-icon'
 import useSWR from 'swr'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 
 const Profiles: React.FC = () => {
+  const { t } = useTranslation()
   const {
     profileConfig,
     setProfileConfig,
@@ -52,6 +55,7 @@ const Profiles: React.FC = () => {
   const [updating, setUpdating] = useState(false)
   const [fileOver, setFileOver] = useState(false)
   const [url, setUrl] = useState('')
+  const isUrlEmpty = url.trim() === ''
   const sensors = useSensors(useSensor(PointerSensor))
   const { data: subs = [], mutate: mutateSubs } = useSWR(
     useSubStore ? 'subStoreSubs' : undefined,
@@ -65,7 +69,7 @@ const Profiles: React.FC = () => {
     const items: { icon?: ReactNode; key: string; children: ReactNode; divider: boolean }[] = [
       {
         key: 'open-substore',
-        children: '访问 Sub-Store',
+        children: t('profiles.substore.visit'),
         icon: <SubStoreIcon className="text-lg" />,
         divider:
           (Boolean(subs) && subs.length > 0) || (Boolean(collections) && collections.length > 0)
@@ -142,6 +146,14 @@ const Profiles: React.FC = () => {
     }
   }
 
+  const handleInputKeyUp = useCallback(
+    (e: KeyboardEvent<HTMLInputElement>) => {
+      if (e.key !== 'Enter' || isUrlEmpty) return
+      handleImport()
+    },
+    [isUrlEmpty]
+  )
+
   useEffect(() => {
     pageRef.current?.addEventListener('dragover', (e) => {
       e.preventDefault()
@@ -167,7 +179,7 @@ const Profiles: React.FC = () => {
             alert(e)
           }
         } else {
-          alert('不支持的文件类型')
+          alert(t('profiles.error.unsupportedFileType'))
         }
       }
       setFileOver(false)
@@ -186,11 +198,11 @@ const Profiles: React.FC = () => {
   return (
     <BasePage
       ref={pageRef}
-      title="订阅管理"
+      title={t('profiles.title')}
       header={
         <Button
           size="sm"
-          title="更新全部订阅"
+          title={t('profiles.updateAll')}
           className="app-nodrag"
           variant="light"
           isIconOnly
@@ -218,6 +230,7 @@ const Profiles: React.FC = () => {
             size="sm"
             value={url}
             onValueChange={setUrl}
+            onKeyUp={handleInputKeyUp}
             endContent={
               <>
                 <Button
@@ -237,7 +250,7 @@ const Profiles: React.FC = () => {
                   checked={useProxy}
                   onValueChange={setUseProxy}
                 >
-                  代理
+                  {t('profiles.useProxy')}
                 </Checkbox>
               </>
             }
@@ -247,11 +260,11 @@ const Profiles: React.FC = () => {
             size="sm"
             color="primary"
             className="ml-2"
-            isDisabled={url === ''}
+            isDisabled={isUrlEmpty}
             isLoading={importing}
             onPress={handleImport}
           >
-            导入
+            {t('profiles.import')}
           </Button>
           {useSubStore && (
             <Dropdown
@@ -350,15 +363,15 @@ const Profiles: React.FC = () => {
                   }
                 } else if (key === 'new') {
                   await addProfileItem({
-                    name: '新建订阅',
+                    name: t('profiles.newProfile'),
                     type: 'local',
                     file: 'proxies: []\nproxy-groups: []\nrules: []'
                   })
                 }
               }}
             >
-              <DropdownItem key="open">打开</DropdownItem>
-              <DropdownItem key="new">新建</DropdownItem>
+              <DropdownItem key="open">{t('profiles.open')}</DropdownItem>
+              <DropdownItem key="new">{t('profiles.new')}</DropdownItem>
             </DropdownMenu>
           </Dropdown>
         </div>
@@ -382,7 +395,7 @@ const Profiles: React.FC = () => {
                 mutateProfileConfig={mutateProfileConfig}
                 updateProfileItem={updateProfileItem}
                 info={item}
-                onClick={async () => {
+                onPress={async () => {
                   await changeCurrentProfile(item.id)
                 }}
               />

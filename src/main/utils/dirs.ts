@@ -13,7 +13,7 @@ export function dataDir(): string {
   if (isPortable()) {
     return path.join(exeDir(), 'data')
   } else {
-    return path.join(app.getPath('appData'), 'mihomo-party')
+    return app.getPath('userData')
   }
 }
 
@@ -102,12 +102,20 @@ export function mihomoWorkDir(): string {
   return path.join(dataDir(), 'work')
 }
 
+export function mihomoProfileWorkDir(id: string | undefined): string {
+  return path.join(mihomoWorkDir(), id || 'default')
+}
+
 export function mihomoTestDir(): string {
   return path.join(dataDir(), 'test')
 }
 
-export function mihomoWorkConfigPath(): string {
-  return path.join(mihomoWorkDir(), 'config.yaml')
+export function mihomoWorkConfigPath(id: string | undefined): string {
+  if (id === 'work') {
+    return path.join(mihomoWorkDir(), 'config.yaml')
+  } else {
+    return path.join(mihomoProfileWorkDir(id), 'config.yaml')
+  }
 }
 
 export function logDir(): string {
@@ -117,5 +125,11 @@ export function logDir(): string {
 export function logPath(): string {
   const date = new Date()
   const name = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
+  return path.join(logDir(), `${name}.log`)
+}
+
+export function substoreLogPath(): string {
+  const date = new Date()
+  const name = `sub-store-${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
   return path.join(logDir(), `${name}.log`)
 }

@@ -241,6 +241,11 @@ const resolveMmdb = () =>
     file: 'country.mmdb',
     downloadURL: `https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/country-lite.mmdb`
   })
+const resolveMetadb = () =>
+  resolveResource({
+    file: 'geoip.metadb',
+    downloadURL: `https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.metadb`
+  })
 const resolveGeosite = () =>
   resolveResource({
     file: 'geosite.dat',
@@ -304,6 +309,11 @@ const resolveSubstore = () =>
     downloadURL:
       'https://github.com/sub-store-org/Sub-Store/releases/latest/download/sub-store.bundle.js'
   })
+const resolveHelper = () =>
+  resolveResource({
+    file: 'party.mihomo.helper',
+    downloadURL: `https://github.com/mihomo-party-org/mihomo-party-helper/releases/download/${arch}/party.mihomo.helper`
+  })
 const resolveSubstoreFrontend = async () => {
   const tempDir = path.join(TEMP_DIR, 'substore-frontend')
   const tempZip = path.join(tempDir, 'dist.zip')
@@ -351,6 +361,7 @@ const tasks = [
     retry: 5
   },
   { name: 'mmdb', func: resolveMmdb, retry: 5 },
+  { name: 'metadb', func: resolveMetadb, retry: 5 },
   { name: 'geosite', func: resolveGeosite, retry: 5 },
   { name: 'geoip', func: resolveGeoIP, retry: 5 },
   { name: 'asn', func: resolveASN, retry: 5 },
@@ -398,6 +409,12 @@ const tasks = [
     func: resolve7zip,
     retry: 5,
     winOnly: true
+  },
+  {
+    name: 'helper',
+    func: resolveHelper,
+    retry: 5,
+    darwinOnly: true
   }
 ]
 
@@ -407,6 +424,7 @@ async function runTask() {
   if (task.winOnly && platform !== 'win32') return runTask()
   if (task.linuxOnly && platform !== 'linux') return runTask()
   if (task.unixOnly && platform === 'win32') return runTask()
+  if (task.darwinOnly && platform !== 'darwin') return runTask()
 
   for (let i = 0; i < task.retry; i++) {
     try {

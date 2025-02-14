@@ -7,7 +7,7 @@ import pac from 'types-pac/pac.d.ts?raw'
 import { useTheme } from 'next-themes'
 import { nanoid } from 'nanoid'
 import React from 'react'
-type Language = 'yaml' | 'javascript' | 'css'
+type Language = 'yaml' | 'javascript' | 'css' | 'json' | 'text'
 
 interface Props {
   value: string
@@ -89,7 +89,7 @@ export const BaseEditor: React.FC<Props> = (props) => {
   const trueTheme = theme === 'system' ? systemTheme : theme
   const { value, readOnly = false, language, onChange } = props
 
-  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor>()
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor>(undefined)
 
   const editorWillMount = (): void => {
     monacoInitialization()
@@ -105,7 +105,9 @@ export const BaseEditor: React.FC<Props> = (props) => {
 
   useEffect(() => {
     window.onresize = (): void => {
-      editorRef.current?.layout()
+      setTimeout(() => {
+        editorRef.current?.layout()
+      }, 0)
     }
     return (): void => {
       window.onresize = null
@@ -123,9 +125,9 @@ export const BaseEditor: React.FC<Props> = (props) => {
       options={{
         tabSize: ['yaml', 'javascript', 'json'].includes(language) ? 2 : 4, // 根据语言类型设置缩进大小
         minimap: {
-          enabled: document.documentElement.clientWidth >= 1500 // 超过一定宽度显示minimap滚动条
+          enabled: document.documentElement.clientWidth >= 1500 // 超过一定宽度显示 minimap 滚动条
         },
-        mouseWheelZoom: true, // 按住Ctrl滚轮调节缩放比例
+        mouseWheelZoom: true, // 按住 Ctrl 滚轮调节缩放比例
         readOnly: readOnly, // 只读模式
         renderValidationDecorations: 'on', // 只读模式下显示校验信息
         quickSuggestions: {
@@ -139,6 +141,7 @@ export const BaseEditor: React.FC<Props> = (props) => {
       }}
       editorWillMount={editorWillMount}
       editorDidMount={editorDidMount}
+      editorWillUnmount={(): void => { }}
       onChange={onChange}
     />
   )

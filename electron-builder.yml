@@ -1,5 +1,5 @@
 appId: party.mihomo.app
-productName: mihomo-party
+productName: Mihomo Party
 directories:
   buildResources: build
 files:
@@ -30,7 +30,6 @@ win:
   artifactName: ${name}-windows-${version}-${arch}-portable.${ext}
 nsis:
   artifactName: ${name}-windows-${version}-${arch}-setup.${ext}
-  shortcutName: Mihomo Party
   uninstallDisplayName: ${productName}
   allowToChangeInstallationDirectory: true
   oneClick: false
@@ -38,15 +37,21 @@ nsis:
   createDesktopShortcut: always
 mac:
   target:
-    - dmg
+    - pkg
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-  notarize: false
+  notarize: true
   artifactName: ${name}-macos-${version}-${arch}.${ext}
+pkg:
+  allowAnywhere: false
+  allowCurrentUserHome: false
+  background:
+    alignment: bottomleft
+    file: build/background.png
 linux:
   desktop:
     Name: Mihomo Party
@@ -54,10 +59,12 @@ linux:
   target:
     - deb
     - rpm
-  maintainer: mihomo-party
+  maintainer: mihomo-party-org
   category: Utility
   artifactName: ${name}-linux-${version}-${arch}.${ext}
 deb:
-  afterInstall: 'build/linux/deb/postinst'
+  afterInstall: 'build/linux/postinst'
+rpm:
+  afterInstall: 'build/linux/postinst'
 npmRebuild: true
 publish: []
